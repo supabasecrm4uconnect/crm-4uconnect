@@ -4,32 +4,6 @@
   --shadow-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
 }
 
-/* Borda animada do login — usa @property para girar o ângulo do conic-gradient
-   diretamente no background do container, sem nenhuma div filha gigante girando.
-   Evita bug do Chrome/Windows onde camadas GPU animadas tornam o cursor branco. */
-@property --border-angle {
-  syntax: '<angle>';
-  initial-value: 0deg;
-  inherits: false;
-}
-
-@keyframes border-rotate {
-  to { --border-angle: 360deg; }
-}
-
-.login-border-spin {
-  --border-angle: 0deg;
-  animation: border-rotate 8s linear infinite;
-  background: conic-gradient(
-    from var(--border-angle),
-    transparent 35%,
-    #10b981 50%,
-    transparent 65%,
-    #10b981 85%,
-    transparent 100%
-  );
-}
-
 * {
   box-sizing: border-box;
 }
@@ -38,11 +12,6 @@ body {
   margin: 0;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
-  color-scheme: light;
-}
-
-input, textarea, select {
-  color-scheme: light;
 }
 
 .scrollbar-hide {
