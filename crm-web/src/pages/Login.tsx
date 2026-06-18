@@ -99,21 +99,14 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
-      <div className="relative w-full max-w-5xl rounded-2xl p-[1.5px] overflow-hidden flex items-center justify-center shadow-2xl">
-        {/* Gradiente rotativo — contorno brilhante */}
-        <div
-          className="absolute inset-[-300%] animate-[spin_8s_linear_infinite] z-0 pointer-events-none"
-          style={{
-            background: 'conic-gradient(from 0deg, transparent 35%, #10b981 50%, transparent 65%, #10b981 85%, transparent 100%)'
-          }}
-        />
+      <div className="login-border-spin relative w-full max-w-5xl rounded-2xl p-[1.5px] overflow-hidden flex items-center justify-center shadow-2xl">
 
-        <div className="relative w-full min-h-[580px] rounded-[14px] overflow-hidden flex bg-white z-10 transform translate-z-0">
+        <div className="relative w-full min-h-[580px] rounded-[14px] overflow-hidden flex bg-white">
 
           {/* Lado esquerdo — branding */}
           <div className="hidden md:flex md:w-1/2 bg-emerald-950 flex-col justify-end p-12 relative overflow-hidden rounded-l-[14px]">
             <div
-              className="absolute inset-0 bg-cover bg-center rounded-l-[14px] transform scale-100 translate-z-0"
+              className="absolute inset-0 bg-cover bg-center rounded-l-[14px]"
               style={{ backgroundImage: `url('/imagem.jpg')` }}
             />
             <div className="absolute inset-0 bg-gradient-to-tr from-emerald-950 via-emerald-900/85 to-emerald-700/50" />
