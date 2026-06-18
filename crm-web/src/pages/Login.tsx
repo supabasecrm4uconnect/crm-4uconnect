@@ -94,7 +94,7 @@ export default function Login() {
     setSuccessMsg('Conta criada! Verifique seu e-mail para confirmar o cadastro.')
   }
 
-  const inputCls = 'w-full pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition'
+  const inputCls = 'w-full pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 caret-slate-700 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition cursor-text'
   const iconCls  = 'absolute left-3 top-1/2 -translate-y-1/2 text-slate-400'
 
   return (
@@ -170,7 +170,7 @@ export default function Login() {
                         onChange={e => setPassword(e.target.value)}
                         placeholder="Senha"
                         required
-                        className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-200 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition"
+                        className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 caret-slate-700 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition cursor-text"
                       />
                       <button
                         type="button"
@@ -246,7 +246,7 @@ export default function Login() {
                         onChange={e => setSignupPassword(e.target.value)}
                         placeholder="Senha (mín. 6 caracteres)"
                         required
-                        className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-200 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition"
+                        className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 caret-slate-700 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition cursor-text"
                       />
                       <button
                         type="button"
@@ -265,7 +265,7 @@ export default function Login() {
                         onChange={e => setSignupConfirm(e.target.value)}
                         placeholder="Confirmar senha"
                         required
-                        className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-200 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition"
+                        className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 caret-slate-700 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition cursor-text"
                       />
                       <button
                         type="button"
