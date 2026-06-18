@@ -99,9 +99,12 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
-      <div className="login-border-spin relative w-full max-w-5xl rounded-2xl p-[1.5px] overflow-hidden flex items-center justify-center shadow-2xl">
+      <div className="relative w-full max-w-5xl rounded-2xl shadow-2xl" style={{ padding: '1.5px' }}>
+        {/* Borda animada numa camada ABAIXO do formulário, sem interferir no cursor */}
+        <div className="login-border-spin absolute inset-0 rounded-2xl" aria-hidden="true" />
 
-        <div className="relative w-full min-h-[580px] rounded-[14px] overflow-hidden flex bg-white">
+        {/* isolation: isolate bloqueia o cursor de "ver" a camada animada atrás */}
+        <div className="relative w-full min-h-[580px] rounded-[14px] overflow-hidden flex bg-white isolate">
 
           {/* Lado esquerdo — branding */}
           <div className="hidden md:flex md:w-1/2 bg-emerald-950 flex-col justify-end p-12 relative overflow-hidden rounded-l-[14px]">
