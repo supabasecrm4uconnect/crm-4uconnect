@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "4U Connect CRM",
+  "version": "1.0.0",
+  "description": "Painel CRM integrado ao WhatsApp Web",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://web.whatsapp.com/*",
+    "https://cimehhzkwgiwgfnkeauo.supabase.co/*",
+    "https://*.whatsapp.net/*",
+    "http://localhost:5173/*",
+    "https://*.vercel.app/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["content.js"],
+      "css": ["sidebar.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://localhost:5173/*", "https://*.vercel.app/*"],
+      "js": ["session-bridge.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "4U Connect CRM"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["inject.js", "logo.png"],
+      "matches": ["https://web.whatsapp.com/*"]
+    }
+  ]
+}

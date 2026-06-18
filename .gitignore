@@ -1,0 +1,28 @@
+# ===== Dependências =====
+**/node_modules/
+
+# ===== Build / saída =====
+crm-web/dist/
+dist/
+dist-ssr/
+
+# ===== Variáveis de ambiente / segredos =====
+# Em produção use o painel da Vercel. NUNCA versione .env.
+**/.env
+**/.env.*
+!**/.env.example
+
+# ===== Ferramenta local de manutenção do banco (não faz parte do app) =====
+.dbtool/
+
+# ===== Config local do Claude Code =====
+.claude/
+
+# ===== Sistema / editores =====
+.DS_Store
+Thumbs.db
+*.log
+*.local
+.vscode/*
+!.vscode/extensions.json
+.idea
