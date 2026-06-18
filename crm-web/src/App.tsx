@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard'
 import Leads from './pages/Leads'
 import FollowUps from './pages/FollowUps'
 import Configuracoes from './pages/Configuracoes'
+import Status from './pages/Status'
 
 function Protected({ children }: { children: React.ReactNode }) {
   return <ProtectedRoute>{children}</ProtectedRoute>
@@ -18,7 +19,8 @@ export default function App() {
     <FollowUpsProvider>
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<Login />} />
+        <Route path="/login"  element={<Login />} />
+        <Route path="/status" element={<Status />} />
         <Route path="/dashboard"    element={<Protected><Dashboard /></Protected>} />
         <Route path="/leads"        element={<Protected><Leads /></Protected>} />
         <Route path="/followups"    element={<Protected><FollowUps /></Protected>} />
