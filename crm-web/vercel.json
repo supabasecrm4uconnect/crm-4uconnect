@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "alias": ["crm-4uconnect.vercel.app"],
   "crons": [
     { "path": "/api/keep-alive", "schedule": "0 12 * * *" }
   ],
