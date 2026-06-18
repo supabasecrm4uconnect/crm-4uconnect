@@ -15,7 +15,7 @@
   // pelo domínio real do CRM na Vercel. Ex.: 'https://crm.4uconnect.com.br'
   // (sem barra no final). Em desenvolvimento, mantenha 'http://localhost:5173'.
   // Este é o ÚNICO lugar do código que precisa mudar para apontar à produção.
-  const CRM_URL = 'http://localhost:5173'; // ⚠️ TROCAR PARA O DOMÍNIO DE PRODUÇÃO
+  const CRM_URL = 'https://crm-web-ochre.vercel.app';
 
   const STORAGE_KEY = 'crm_4u_session';
 
