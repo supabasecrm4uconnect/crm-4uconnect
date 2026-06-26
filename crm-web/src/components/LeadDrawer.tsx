@@ -1,34 +1,36 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
-  Loader2, X, MessageSquare,
-  Clock, CheckCircle2, Plus, Send, Trash2
+  Loader2, X,
+  Clock, CheckCircle2, Plus, Send, Trash2, Archive, ArchiveRestore,
+  Flag, Globe, Tag, Tags, DollarSign, FileText, StickyNote, ListChecks, Calendar
 } from 'lucide-react'
+import { InputIcon, TextareaIcon, iconInputCls, iconSelectCls, iconTextareaCls } from './FieldIcon'
+import WhatsAppIcon from './WhatsAppIcon'
 import StatusBadge from './StatusBadge'
 import LeadAvatar from './LeadAvatar'
 import { supabase } from '../lib/supabase'
 import {
   allActivityTypes, activityTypeLabel, activityStatusConfig,
   formatWhatsApp, formatDateTime, formatDate,
-  whatsappLink, isOverdue,
+  whatsappLink, isOverdue, parseCurrency,
 } from '../lib/helpers'
 import { useStatuses } from '../contexts/StatusesContext'
 import type {
-  LeadWithRelations, LeadSource, LeadSegment, Profile,
+  LeadWithRelations, LeadSource, LeadSegment,
   LeadStatus, LeadStatusHistory, LeadActivity, LeadNote, ActivityType,
 } from '../types'
 
 interface LeadDrawerProps {
   leadId: string | null
   onClose: () => void
+  onSaved?: (lead: LeadWithRelations) => void
 }
 
-const inputCls = 'w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition'
-const selectCls = 'w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition bg-white'
 const labelCls = 'block text-sm font-medium text-slate-700 mb-1.5'
 
 type Tab = 'info' | 'activities' | 'history' | 'notes'
 
-export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
+export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps) {
   const [lead, setLead] = useState<LeadWithRelations | null>(null)
   const [history, setHistory] = useState<LeadStatusHistory[]>([])
   const [activities, setActivities] = useState<LeadActivity[]>([])
@@ -38,7 +40,6 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
   const [deleting, setDeleting] = useState(false)
   const [sources, setSources] = useState<LeadSource[]>([])
   const [segments, setSegments] = useState<LeadSegment[]>([])
-  const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading] = useState(false)
 
   const [activeTab, setActiveTab] = useState<Tab>('info')
@@ -51,9 +52,11 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
   const [formSegmentoId, setFormSegmentoId] = useState('')
   const [formTags, setFormTags] = useState<string[]>([])
   const [formObservacao, setFormObservacao] = useState('')
+  const [formValor, setFormValor] = useState('')
   const [formResponsavelId, setFormResponsavelId] = useState('')
   const [formProximoFollowup, setFormProximoFollowup] = useState('')
   const [tagInput, setTagInput] = useState('')
+  const [archiving, setArchiving] = useState(false)
 
   const [showActivityModal, setShowActivityModal] = useState(false)
   const [activityForm, setActivityForm] = useState({ tipo: 'enviar_mensagem' as ActivityType, descricao: '', data: '', hora: '' })
@@ -96,6 +99,7 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
       setFormSegmentoId(l.segmento_id ?? '')
       setFormTags(l.tags ?? [])
       setFormObservacao(l.observacao ?? '')
+      setFormValor(l.valor != null ? String(l.valor) : '')
       setFormResponsavelId(l.responsavel_id ?? '')
       if (l.proximo_followup) {
         const d = new Date(l.proximo_followup)
@@ -125,14 +129,12 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
       loadLead(leadId),
       supabase.from('lead_sources').select('*').eq('ativo', true).order('nome'),
       supabase.from('lead_segments').select('*').eq('ativo', true).order('nome'),
-      supabase.from('profiles').select('id, nome, email, tipo_usuario, status, created_at, updated_at').eq('status', 'ativo').order('nome'),
       loadHistory(leadId),
       loadActivities(leadId),
       loadNotes(leadId),
-    ]).then(([, sourcesRes, segmentsRes, profilesRes]) => {
+    ]).then(([, sourcesRes, segmentsRes]) => {
       setSources((sourcesRes as any).data ?? [])
       setSegments((segmentsRes as any).data ?? [])
-      setProfiles((profilesRes as any).data ?? [])
       setLoading(false)
     })
   }, [leadId, loadLead, loadHistory, loadActivities, loadNotes])
@@ -166,12 +168,18 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
     const { data: { user } } = await supabase.auth.getUser()
     const statusChanged = formStatus !== lead.status
 
+    // Consolida a tag que está digitada mas ainda não virou chip (sem Enter/vírgula)
+    const pending = tagInput.trim()
+    const finalTags = pending && !formTags.includes(pending) ? [...formTags, pending] : formTags
+    if (pending) { setFormTags(finalTags); setTagInput('') }
+
     const { error: updateError } = await supabase.from('leads').update({
       status: formStatus,
       origem_id: formOrigemId || null,
       segmento_id: formSegmentoId || null,
-      tags: formTags,
+      tags: finalTags,
       observacao: formObservacao.trim() || null,
+      valor: parseCurrency(formValor),
       responsavel_id: formResponsavelId || user?.id || null,
       proximo_followup: formProximoFollowup ? `${formProximoFollowup}T12:00:00.000Z` : null,
     }).eq('id', lead.id)
@@ -190,6 +198,15 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
     await loadLead(lead.id)
     await Promise.all([loadHistory(lead.id), loadActivities(lead.id)])
     setSaving(false)
+
+    // Atualiza a lista/pipeline imediatamente (não depende do timing do realtime)
+    if (onSaved) {
+      const { data: fresh } = await supabase
+        .from('leads')
+        .select('*, lead_sources(id, nome), lead_segments(id, nome), profiles(id, nome)')
+        .eq('id', lead.id).single()
+      if (fresh) onSaved(fresh as LeadWithRelations)
+    }
   }
 
   async function handleDelete() {
@@ -210,6 +227,20 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
     }
   }
 
+  async function handleToggleArquivar() {
+    if (!lead) return
+    setArchiving(true)
+    setError('')
+    const novo = !lead.arquivado
+    const { error: archErr } = await supabase.from('leads').update({
+      arquivado: novo,
+      arquivado_em: novo ? new Date().toISOString() : null,
+    }).eq('id', lead.id)
+    setArchiving(false)
+    if (archErr) { setActiveTab('info'); setError(novo ? 'Erro ao arquivar o lead.' : 'Erro ao desarquivar o lead.'); return }
+    onClose()
+  }
+
   async function handleMarkActivityDone(activityId: string) {
     if (!leadId) return
     await supabase.from('lead_activities').update({
@@ -223,9 +254,10 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
     e.preventDefault()
     if (!lead) return
     setSavingActivity(true)
+    setError('')
     const { data: { user } } = await supabase.auth.getUser()
 
-    await supabase.from('lead_activities').insert({
+    const { error: actErr } = await supabase.from('lead_activities').insert({
       lead_id: lead.id,
       tipo_atividade: activityForm.tipo,
       descricao: activityForm.descricao.trim() || null,
@@ -234,6 +266,7 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
       criado_por: user?.id ?? null,
       status_atividade: 'pendente',
     })
+    if (actErr) { setSavingActivity(false); setError('Erro ao agendar a atividade.'); return }
 
     const proximo = `${activityForm.data}T12:00:00.000Z`
     if (!lead.proximo_followup || proximo < lead.proximo_followup) {
@@ -251,13 +284,20 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
     e.preventDefault()
     if (!noteText.trim() || !lead) return
     setSavingNote(true)
+    setError('')
     const { data: { user } } = await supabase.auth.getUser()
 
-    await supabase.from('lead_notes').insert({
+    const { error: noteErr } = await supabase.from('lead_notes').insert({
       lead_id: lead.id,
       nota: noteText.trim(),
       criado_por: user?.id ?? null,
     })
+    if (noteErr) {
+      console.error('[lead_notes] erro ao inserir nota:', noteErr)
+      setSavingNote(false)
+      setError('Não foi possível adicionar a nota. Tente novamente.')
+      return
+    }
 
     setNoteText('')
     setSavingNote(false)
@@ -307,10 +347,6 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-slate-900 text-base font-semibold truncate">{lead.nome}</h2>
                   <StatusBadge status={formStatus} />
-                  <span className="flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                    ao vivo
-                  </span>
                 </div>
                 <p className="text-slate-500 text-sm">{formatWhatsApp(lead.whatsapp)}</p>
               </div>
@@ -319,6 +355,14 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
           <div className="flex items-center gap-2 shrink-0 ml-3">
             {lead && (
               <>
+                <button
+                  onClick={handleToggleArquivar}
+                  disabled={archiving}
+                  className="p-2 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition disabled:opacity-50"
+                  title={lead.arquivado ? 'Desarquivar lead' : 'Arquivar lead'}
+                >
+                  {archiving ? <Loader2 size={18} className="animate-spin" /> : lead.arquivado ? <ArchiveRestore size={18} /> : <Archive size={18} />}
+                </button>
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
                   className="p-2 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition"
@@ -332,7 +376,7 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
                   rel="noreferrer"
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-sm font-medium transition"
                 >
-                  <MessageSquare size={14} />
+                  <WhatsAppIcon size={14} />
                   WhatsApp
                 </a>
               </>
@@ -383,39 +427,52 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className={labelCls}>Status</label>
-                      <select value={formStatus} onChange={e => setFormStatus(e.target.value as LeadStatus)} className={selectCls}>
-                        {allStatuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-
-                      </select>
+                      <InputIcon icon={Flag}>
+                        <select value={formStatus} onChange={e => setFormStatus(e.target.value as LeadStatus)} className={iconSelectCls}>
+                          {allStatuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
+                      </InputIcon>
                     </div>
                     <div>
                       <label className={labelCls}>Responsável</label>
-                      <select value={formResponsavelId} onChange={e => setFormResponsavelId(e.target.value)} className={selectCls}>
-                        <option value="">Sem responsável</option>
-                        {profiles.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                      </select>
+                      <div className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 text-sm">
+                        {lead.profiles?.nome ?? '—'}
+                      </div>
                     </div>
                     <div>
                       <label className={labelCls}>Origem</label>
-                      <select value={formOrigemId} onChange={e => setFormOrigemId(e.target.value)} className={selectCls}>
-                        <option value="">Selecionar</option>
-                        {sources.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-                      </select>
+                      <InputIcon icon={Globe}>
+                        <select value={formOrigemId} onChange={e => setFormOrigemId(e.target.value)} className={iconSelectCls}>
+                          <option value="">Selecionar</option>
+                          {sources.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                        </select>
+                      </InputIcon>
                     </div>
                     <div>
                       <label className={labelCls}>Segmento</label>
-                      <select value={formSegmentoId} onChange={e => setFormSegmentoId(e.target.value)} className={selectCls}>
-                        <option value="">Selecionar</option>
-                        {segments.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-                      </select>
+                      <InputIcon icon={Tag}>
+                        <select value={formSegmentoId} onChange={e => setFormSegmentoId(e.target.value)} className={iconSelectCls}>
+                          <option value="">Selecionar</option>
+                          {segments.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                        </select>
+                      </InputIcon>
                     </div>
                     <div className="col-span-2">
-                      <label className={labelCls}>Próximo follow-up</label>
-                      <input type="date" value={formProximoFollowup} onChange={e => setFormProximoFollowup(e.target.value)} className={inputCls} />
+                      <label className={labelCls}>Valor (R$)</label>
+                      <InputIcon icon={DollarSign}>
+                        <input
+                          value={formValor}
+                          onChange={e => setFormValor(e.target.value)}
+                          inputMode="decimal"
+                          placeholder="Ex: 1.500,00"
+                          className={iconInputCls}
+                        />
+                      </InputIcon>
                     </div>
                     <div className="col-span-2">
                       <label className={labelCls}>Tags</label>
-                      <div className="border border-slate-200 rounded-lg p-2 flex flex-wrap gap-1.5 focus-within:ring-2 focus-within:ring-emerald-500 min-h-[42px]">
+                      <div className="relative border border-slate-200 rounded-lg p-2 pl-10 flex flex-wrap gap-1.5 focus-within:ring-2 focus-within:ring-emerald-500 min-h-[42px]">
+                        <Tags size={15} className="absolute left-3 top-3 text-slate-400 pointer-events-none" />
                         {formTags.map(tag => (
                           <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full text-xs">
                             {tag}
@@ -437,7 +494,9 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
                     </div>
                     <div className="col-span-2">
                       <label className={labelCls}>Observação</label>
-                      <textarea value={formObservacao} onChange={e => setFormObservacao(e.target.value)} rows={4} placeholder="Informações sobre o atendimento..." className={inputCls + ' resize-none'} />
+                      <TextareaIcon icon={FileText}>
+                        <textarea value={formObservacao} onChange={e => setFormObservacao(e.target.value)} rows={4} placeholder="Informações sobre o atendimento..." className={iconTextareaCls} />
+                      </TextareaIcon>
                     </div>
                   </div>
 
@@ -556,13 +615,15 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
               {activeTab === 'notes' && (
                 <div>
                   <form onSubmit={handleAddNote} className="mb-5">
-                    <textarea
-                      value={noteText}
-                      onChange={e => setNoteText(e.target.value)}
-                      rows={3}
-                      placeholder="Adicionar uma nota..."
-                      className={inputCls + ' resize-none mb-2'}
-                    />
+                    <TextareaIcon icon={StickyNote}>
+                      <textarea
+                        value={noteText}
+                        onChange={e => setNoteText(e.target.value)}
+                        rows={3}
+                        placeholder="Adicionar uma nota..."
+                        className={iconTextareaCls + ' mb-2'}
+                      />
+                    </TextareaIcon>
                     <div className="flex justify-end">
                       <button type="submit" disabled={savingNote || !noteText.trim()} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium transition">
                         {savingNote ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
@@ -644,23 +705,31 @@ export default function LeadDrawer({ leadId, onClose }: LeadDrawerProps) {
             <form onSubmit={handleCreateActivity} className="px-6 py-5 space-y-4">
               <div>
                 <label className={labelCls}>Tipo de atividade</label>
-                <select value={activityForm.tipo} onChange={e => setActivityForm(f => ({ ...f, tipo: e.target.value as ActivityType }))} className={selectCls}>
-                  {allActivityTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
+                <InputIcon icon={ListChecks}>
+                  <select value={activityForm.tipo} onChange={e => setActivityForm(f => ({ ...f, tipo: e.target.value as ActivityType }))} className={iconSelectCls}>
+                    {allActivityTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </InputIcon>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={labelCls}>Data *</label>
-                  <input type="date" value={activityForm.data} onChange={e => setActivityForm(f => ({ ...f, data: e.target.value }))} required className={inputCls} />
+                  <InputIcon icon={Calendar}>
+                    <input type="date" value={activityForm.data} onChange={e => setActivityForm(f => ({ ...f, data: e.target.value }))} required className={iconInputCls} />
+                  </InputIcon>
                 </div>
                 <div>
                   <label className={labelCls}>Hora *</label>
-                  <input type="time" value={activityForm.hora} onChange={e => setActivityForm(f => ({ ...f, hora: e.target.value }))} required className={inputCls} />
+                  <InputIcon icon={Clock}>
+                    <input type="time" value={activityForm.hora} onChange={e => setActivityForm(f => ({ ...f, hora: e.target.value }))} required className={iconInputCls} />
+                  </InputIcon>
                 </div>
               </div>
               <div>
                 <label className={labelCls}>Descrição</label>
-                <textarea value={activityForm.descricao} onChange={e => setActivityForm(f => ({ ...f, descricao: e.target.value }))} rows={2} placeholder="Detalhes da atividade..." className={inputCls + ' resize-none'} />
+                <TextareaIcon icon={FileText}>
+                  <textarea value={activityForm.descricao} onChange={e => setActivityForm(f => ({ ...f, descricao: e.target.value }))} rows={2} placeholder="Detalhes da atividade..." className={iconTextareaCls} />
+                </TextareaIcon>
               </div>
               <div className="flex justify-end gap-3 pt-1">
                 <button type="button" onClick={() => setShowActivityModal(false)} className="px-4 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition">Cancelar</button>

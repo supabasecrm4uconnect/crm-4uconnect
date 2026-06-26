@@ -46,10 +46,22 @@ export interface Lead {
   status: LeadStatus
   tags: string[]
   observacao: string | null
+  valor: number | null
   responsavel_id: string | null
   proximo_followup: string | null
+  arquivado: boolean
+  arquivado_em: string | null
   created_at: string
   updated_at: string
+}
+
+export interface Organization {
+  id: string
+  nome: string
+  nome_exibicao: string | null
+  logo_url: string | null
+  auto_arquivar_dias: number | null
+  created_at: string
 }
 
 export interface LeadWithRelations extends Lead {

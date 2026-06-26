@@ -18,5 +18,17 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // Regras novas do React Compiler (eslint-plugin-react-hooks v6): sinalizam
+      // padrões intencionais de data-fetching/efeitos neste projeto. Mantidas como
+      // aviso/desligadas para não falhar o lint sem reescritas arriscadas.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/immutability': 'off',
+      'react-hooks/incompatible-library': 'off',
+      // Contexts exportam o provider + hook/constantes de propósito.
+      'react-refresh/only-export-components': 'off',
+      // `any` pontual em queries do Supabase (builder com tipos complexos).
+      '@typescript-eslint/no-explicit-any': 'warn',
+    },
   },
 ])

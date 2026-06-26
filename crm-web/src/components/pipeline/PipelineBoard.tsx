@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   DndContext, DragOverlay, PointerSensor,
   useSensor, useSensors,
@@ -41,7 +41,7 @@ export default function PipelineBoard({ leads, onLeadsChange, columnsLocked }: P
 
   const activeLead = leads.find(l => l.id === activeLeadId) ?? null
 
-  const leadsByStatus = useCallback((): Record<string, LeadWithRelations[]> => {
+  const grouped = useMemo((): Record<string, LeadWithRelations[]> => {
     const map: Record<string, LeadWithRelations[]> = {}
     activeStatuses.forEach(s => { map[s.value] = [] })
     leads.forEach(l => {
@@ -112,8 +112,6 @@ export default function PipelineBoard({ leads, onLeadsChange, columnsLocked }: P
       alterado_por: user?.id ?? null,
     })
   }
-
-  const grouped = leadsByStatus()
 
   return (
     <div className="flex flex-col gap-3 w-full min-w-0">

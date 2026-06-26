@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   UserPlus, MessageCircle, FileText,
   CalendarClock, AlertCircle, CheckCircle2, XCircle,
-  ArrowRight, TrendingUp, Users, Globe,
+  ArrowRight, TrendingUp, Users, Globe, DollarSign, Wallet, Loader2,
 } from 'lucide-react'
 import Layout from '../components/Layout'
 import StatusBadge from '../components/StatusBadge'
 import { supabase } from '../lib/supabase'
-import { localDateStr, whatsappLink, formatDateTime } from '../lib/helpers'
+import { localDateStr, whatsappLink, formatDateTime, formatCurrency } from '../lib/helpers'
 
 interface Stats {
   total_leads: number
@@ -19,6 +19,35 @@ interface Stats {
   followups_atrasados: number
   fechados: number
   perdidos: number
+  valor_negociacao: number
+  valor_fechado: number
+}
+
+type Period = 'todos' | 'hoje' | '7d' | '30d' | 'mes' | 'custom'
+
+const PERIODS: { key: Period; label: string }[] = [
+  { key: 'todos', label: 'Todos' },
+  { key: 'hoje',  label: 'Hoje' },
+  { key: '7d',    label: '7 dias' },
+  { key: '30d',   label: '30 dias' },
+  { key: 'mes',   label: 'Este mês' },
+  { key: 'custom', label: 'Personalizado' },
+]
+
+function dayStartISO(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d, 0, 0, 0, 0).toISOString()
+}
+function dayEndISO(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d, 23, 59, 59, 999).toISOString()
+}
+function shiftDays(dateStr: string, delta: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  dt.setDate(dt.getDate() + delta)
+  const pad = (x: number) => String(x).padStart(2, '0')
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`
 }
 
 interface FollowUp {
@@ -64,6 +93,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<Stats>({
     total_leads: 0, novos_hoje: 0, em_atendimento: 0, proposta_enviada: 0,
     followups_hoje: 0, followups_atrasados: 0, fechados: 0, perdidos: 0,
+    valor_negociacao: 0, valor_fechado: 0,
   })
   const [followupsHoje, setFollowupsHoje] = useState<FollowUp[]>([])
   const [leadsRecentes, setLeadsRecentes] = useState<LeadRecente[]>([])
@@ -71,17 +101,53 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [firstName, setFirstName] = useState('')
 
+  const [period, setPeriod] = useState<Period>('todos')
+  const [customDe, setCustomDe] = useState('')
+  const [customAte, setCustomAte] = useState('')
+  const [refreshing, setRefreshing] = useState(false)
+  const firstLoad = useRef(true)
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return
       supabase.from('profiles').select('nome').eq('id', user.id).single()
         .then(({ data }) => { if (data) setFirstName((data as { nome: string }).nome.split(' ')[0]) })
     })
+  }, [])
 
+  useEffect(() => {
+    // Calcula o intervalo de datas do período selecionado
+    const today = localDateStr()
+    let start: string | null = null
+    let end: string | null = null
+    if (period === 'hoje') { start = dayStartISO(today); end = dayEndISO(today) }
+    else if (period === '7d') { start = dayStartISO(shiftDays(today, -6)); end = dayEndISO(today) }
+    else if (period === '30d') { start = dayStartISO(shiftDays(today, -29)); end = dayEndISO(today) }
+    else if (period === 'mes') { start = dayStartISO(today.slice(0, 8) + '01'); end = dayEndISO(today) }
+    else if (period === 'custom') {
+      if (customDe) start = dayStartISO(customDe)
+      if (customAte) end = dayEndISO(customAte)
+    }
+
+    // Aplica o intervalo a uma query de leads (created_at)
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const inRange = (q: any): any => {
+      let r = q
+      if (start) r = r.gte('created_at', start)
+      if (end) r = r.lte('created_at', end)
+      return r
+    }
+    const countLeads = (build?: (q: any) => any): any => {
+      let q: any = supabase.from('leads').select('*', { count: 'exact', head: true })
+      if (build) q = build(q)
+      return inRange(q)
+    }
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    let cancelled = false
     async function load() {
-      const today = localDateStr()
-      const todayStartUTC = `${today}T03:00:00.000Z`
-
+      if (firstLoad.current) setLoading(true)
+      else setRefreshing(true)
       const [
         { count: total_leads },
         { count: novos_hoje },
@@ -93,16 +159,16 @@ export default function Dashboard() {
         { count: perdidos },
         { data: atividadesHoje },
         { data: recentes },
-        { data: leadsOrigem },
+        { data: leadsAgg },
       ] = await Promise.all([
-        supabase.from('leads').select('*', { count: 'exact', head: true }),
-        supabase.from('leads').select('*', { count: 'exact', head: true }).gte('created_at', todayStartUTC),
-        supabase.from('leads').select('*', { count: 'exact', head: true }).eq('status', 'em_atendimento'),
-        supabase.from('leads').select('*', { count: 'exact', head: true }).eq('status', 'proposta_enviada'),
+        countLeads(),
+        supabase.from('leads').select('*', { count: 'exact', head: true }).gte('created_at', dayStartISO(today)),
+        countLeads(q => q.eq('status', 'em_atendimento')),
+        countLeads(q => q.eq('status', 'proposta_enviada')),
         supabase.from('lead_activities').select('*', { count: 'exact', head: true }).eq('data_agendada', today).eq('status_atividade', 'pendente'),
         supabase.from('lead_activities').select('*', { count: 'exact', head: true }).lt('data_agendada', today).eq('status_atividade', 'pendente'),
-        supabase.from('leads').select('*', { count: 'exact', head: true }).eq('status', 'fechado'),
-        supabase.from('leads').select('*', { count: 'exact', head: true }).eq('status', 'perdido'),
+        countLeads(q => q.eq('status', 'fechado')),
+        countLeads(q => q.eq('status', 'perdido')),
         supabase.from('lead_activities')
           .select('id, tipo_atividade, hora_agendada, descricao, leads(id, nome, whatsapp)')
           .eq('data_agendada', today)
@@ -112,8 +178,23 @@ export default function Dashboard() {
           .select('id, nome, status, created_at, lead_sources(nome)')
           .order('created_at', { ascending: false })
           .limit(5),
-        supabase.from('leads').select('origem_id, lead_sources(nome)'),
+        inRange(supabase.from('leads').select('valor, status, lead_sources(nome)')),
       ])
+
+      if (cancelled) return
+
+      // Soma de valores a partir do conjunto do período
+      let valorNeg = 0
+      let valorFec = 0
+      const map: Record<string, number> = {}
+      ;(leadsAgg as unknown as { valor: number | null; status: string | null; lead_sources: unknown }[] ?? []).forEach(l => {
+        const v = l.valor ?? 0
+        if (l.status === 'fechado') valorFec += v
+        else if (l.status !== 'perdido') valorNeg += v
+        const src = l.lead_sources as { nome: string } | { nome: string }[] | null
+        const nome = Array.isArray(src) ? (src[0]?.nome ?? 'Sem origem') : (src?.nome ?? 'Sem origem')
+        map[nome] = (map[nome] ?? 0) + 1
+      })
 
       setStats({
         total_leads:          total_leads          ?? 0,
@@ -124,29 +205,25 @@ export default function Dashboard() {
         followups_atrasados:  followups_atrasados  ?? 0,
         fechados:             fechados             ?? 0,
         perdidos:             perdidos             ?? 0,
+        valor_negociacao:     valorNeg,
+        valor_fechado:        valorFec,
       })
       setFollowupsHoje((atividadesHoje as unknown as FollowUp[]) ?? [])
       setLeadsRecentes((recentes as unknown as LeadRecente[]) ?? [])
-
-      // Agrupa leads por origem no cliente
-      const map: Record<string, number> = {}
-      ;(leadsOrigem ?? []).forEach((l: { lead_sources: unknown }) => {
-        const src = l.lead_sources as { nome: string } | { nome: string }[] | null
-        const nome = Array.isArray(src) ? (src[0]?.nome ?? 'Sem origem') : (src?.nome ?? 'Sem origem')
-        map[nome] = (map[nome] ?? 0) + 1
-      })
       setOrigens(
         Object.entries(map)
           .map(([nome, count]) => ({ nome, count }))
           .sort((a, b) => b.count - a.count)
           .slice(0, 6)
       )
-
       setLoading(false)
+      setRefreshing(false)
+      firstLoad.current = false
     }
 
     load()
-  }, [])
+    return () => { cancelled = true }
+  }, [period, customDe, customAte])
 
   const taxaConversao = (stats.fechados + stats.perdidos) > 0
     ? Math.round((stats.fechados / (stats.fechados + stats.perdidos)) * 100)
@@ -156,7 +233,7 @@ export default function Dashboard() {
 
   const cardsHoje = [
     {
-      label: 'Total de leads',
+      label: period === 'todos' ? 'Total de leads' : 'Leads no período',
       value: stats.total_leads,
       icon: Users,
       color: 'text-slate-600',
@@ -222,6 +299,33 @@ export default function Dashboard() {
           </p>
         </div>
 
+        {/* Filtro de período */}
+        <div className="flex flex-wrap items-center gap-2 mb-6">
+          <div className="flex items-center bg-slate-100 rounded-lg p-1 gap-0.5">
+            {PERIODS.map(p => (
+              <button
+                key={p.key}
+                onClick={() => setPeriod(p.key)}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                  period === p.key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {period === 'custom' && (
+            <div className="flex items-center gap-1.5">
+              <input type="date" value={customDe} onChange={e => setCustomDe(e.target.value)} title="De"
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
+              <span className="text-slate-400 text-sm">até</span>
+              <input type="date" value={customAte} onChange={e => setCustomAte(e.target.value)} title="Até"
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
+            </div>
+          )}
+          {refreshing && <Loader2 size={14} className="text-slate-400 animate-spin" />}
+        </div>
+
         {loading ? (
           <div className="space-y-6">
             <div className="grid grid-cols-4 gap-4">{Array.from({ length: 4 }).map((_, i) => <div key={i}>{skeletonCard}</div>)}</div>
@@ -271,6 +375,27 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Valores */}
+            <div className="mb-6">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Valores {period !== 'todos' && '(no período)'}</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white rounded-xl border border-slate-100 p-5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center mb-4">
+                    <Wallet size={16} className="text-amber-600" />
+                  </div>
+                  <p className="text-slate-900 text-2xl font-semibold tabular-nums">{formatCurrency(stats.valor_negociacao) || 'R$ 0,00'}</p>
+                  <p className="text-slate-500 text-sm mt-0.5">Em negociação</p>
+                </div>
+                <div className="bg-white rounded-xl border border-slate-100 p-5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center mb-4">
+                    <DollarSign size={16} className="text-emerald-600" />
+                  </div>
+                  <p className="text-slate-900 text-2xl font-semibold tabular-nums">{formatCurrency(stats.valor_fechado) || 'R$ 0,00'}</p>
+                  <p className="text-slate-500 text-sm mt-0.5">Fechado</p>
+                </div>
               </div>
             </div>
 

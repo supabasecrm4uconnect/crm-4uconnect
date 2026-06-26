@@ -108,7 +108,7 @@ export default function Login() {
                 CRM integrado ao WhatsApp Web para acompanhar cada oportunidade do primeiro contato ao fechamento.
               </p>
             </div>
-            <p className="text-slate-400 text-xs">© 2026 4U Connect</p>
+            <p className="text-slate-400 text-xs">© 2026 Connect CRM</p>
           </div>
         </div>
 

@@ -40,6 +40,44 @@ export function whatsappLink(number: string): string {
   return `https://wa.me/${normalizeWhatsApp(number)}`
 }
 
+/**
+ * Gera as variantes de um número BR considerando o 9º dígito de celular.
+ * Ex.: 554299981280 ≡ 5542999981280 — o mesmo contato pode estar gravado
+ * com ou sem o 9. Usado para deduplicar na importação de leads.
+ */
+export function phoneVariants(input: string): string[] {
+  const n = normalizeWhatsApp(input)
+  const variants = new Set<string>([n])
+  if (n.startsWith('55') && n.length >= 12) {
+    const ddd = n.slice(2, 4)
+    const num = n.slice(4)
+    if (num.length === 9 && num[0] === '9') variants.add('55' + ddd + num.slice(1))
+    if (num.length === 8) variants.add('55' + ddd + '9' + num)
+  }
+  return [...variants]
+}
+
+export function formatCurrency(value: number | null | undefined): string {
+  if (value == null) return ''
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+/** Converte texto de planilha/usuário (ex: "1.500,00", "R$ 2000", "1500.50") em número. */
+export function parseCurrency(input: string | number | null | undefined): number | null {
+  if (input == null || input === '') return null
+  if (typeof input === 'number') return Number.isFinite(input) ? input : null
+  let s = String(input).replace(/[^\d.,-]/g, '').trim()
+  if (!s) return null
+  // Se tem vírgula e ponto, assume formato pt-BR (ponto=milhar, vírgula=decimal)
+  if (s.includes(',') && s.includes('.')) {
+    s = s.replace(/\./g, '').replace(',', '.')
+  } else if (s.includes(',')) {
+    s = s.replace(',', '.')
+  }
+  const n = parseFloat(s)
+  return Number.isFinite(n) ? n : null
+}
+
 export function formatDate(dateStr: string): string {
   if (!dateStr) return ''
   // Strings YYYY-MM-DD devem ser tratadas como data local, não UTC midnight

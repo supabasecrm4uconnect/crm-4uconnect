@@ -290,6 +290,28 @@
   min-height: 64px;
 }
 
+/* Ícone dentro do campo */
+.crm-input-wrap {
+  position: relative;
+}
+.crm-input-wrap > svg {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+.crm-input-wrap.crm-wrap-top > svg {
+  top: 11px;
+  transform: none;
+}
+.crm-has-icon {
+  padding-left: 30px;
+}
+
 /* Buttons */
 .crm-btn {
   width: 100%;

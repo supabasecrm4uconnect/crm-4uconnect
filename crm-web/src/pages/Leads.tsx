@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, ChevronRight, MessageSquare, Loader2, X, LayoutList, Kanban, CalendarDays, SlidersHorizontal, GripVertical, Eye } from 'lucide-react'
+import { Plus, Search, ChevronRight, Loader2, X, LayoutList, Kanban, CalendarDays, SlidersHorizontal, GripVertical, Eye, Download, Upload, User, Phone, Flag, Globe, Tag, Tags, DollarSign, FileText } from 'lucide-react'
 import {
   DndContext, PointerSensor, useSensor, useSensors, closestCenter,
   type DragEndEvent,
@@ -13,15 +13,19 @@ import Layout from '../components/Layout'
 import StatusBadge from '../components/StatusBadge'
 import PipelineBoard from '../components/pipeline/PipelineBoard'
 import LeadDrawer from '../components/LeadDrawer'
+import ImportLeadsModal from '../components/ImportLeadsModal'
 import { useLeadsRealtime } from '../hooks/useLeadsRealtime'
 import { supabase } from '../lib/supabase'
+import { exportLeadsToXlsx } from '../lib/exportLeads'
 import {
-  formatWhatsApp, normalizeWhatsApp,
+  formatWhatsApp, normalizeWhatsApp, formatCurrency, parseCurrency, phoneVariants,
   whatsappLink, localDateStr, formatDateTime
 } from '../lib/helpers'
 import { useStatuses, type StatusConfig } from '../contexts/StatusesContext'
 import LeadAvatar from '../components/LeadAvatar'
-import type { LeadWithRelations, LeadSource, LeadSegment, Profile, LeadStatus } from '../types'
+import WhatsAppIcon from '../components/WhatsAppIcon'
+import { InputIcon, TextareaIcon, iconInputCls, iconSelectCls, iconTextareaCls } from '../components/FieldIcon'
+import type { LeadWithRelations, LeadSource, LeadSegment, LeadStatus } from '../types'
 
 type ViewMode = 'list' | 'pipeline'
 
@@ -58,12 +62,10 @@ function SortableStatusItem({ status, onToggle }: SortableStatusItemProps) {
   )
 }
 
-const inputCls = 'w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition'
-const selectCls = 'w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition bg-white'
 const labelCls = 'block text-sm font-medium text-slate-700 mb-1.5'
 
 export default function Leads() {
-  const { statuses: allStatuses, refresh: refreshStatuses } = useStatuses()
+  const { statuses: allStatuses, refresh: refreshStatuses, getConfig: getStatusConfig } = useStatuses()
   const [searchParams] = useSearchParams()
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(
     () => searchParams.get('lead')
@@ -72,7 +74,6 @@ export default function Leads() {
   const [leads, setLeads] = useState<LeadWithRelations[]>([])
   const [sources, setSources] = useState<LeadSource[]>([])
   const [segments, setSegments] = useState<LeadSegment[]>([])
-  const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     // Se veio com ?status= do dashboard, força modo lista para o filtro funcionar
@@ -83,6 +84,15 @@ export default function Leads() {
   function switchView(mode: ViewMode) {
     setViewMode(mode)
     localStorage.setItem('crm_leads_view', mode)
+    setSelectedIds(new Set())
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id); else n.add(id)
+      return n
+    })
   }
 
   // Pipeline organizer
@@ -127,17 +137,18 @@ export default function Leads() {
   const [filterStatus, setFilterStatus] = useState(() => searchParams.get('status') ?? '')
   const [filterOrigem, setFilterOrigem] = useState('')
   const [filterSegmento, setFilterSegmento] = useState('')
-  const [filterResponsavel, setFilterResponsavel] = useState('')
   const [filterDataDe, setFilterDataDe] = useState('')
   const [filterDataAte, setFilterDataAte] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   // Create modal
   const [showModal, setShowModal] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [form, setForm] = useState({
     nome: '', whatsapp: '', status: 'novo_lead' as LeadStatus,
-    origem_id: '', segmento_id: '', responsavel_id: '', observacao: '', tags: [] as string[],
+    origem_id: '', segmento_id: '', observacao: '', valor: '', tags: [] as string[],
   })
   const [tagInput, setTagInput] = useState('')
 
@@ -148,32 +159,33 @@ export default function Leads() {
 
   async function loadAll() {
     setLoading(true)
-    const [leadsRes, sourcesRes, segmentsRes, profilesRes] = await Promise.all([
+    const [leadsRes, sourcesRes, segmentsRes] = await Promise.all([
       supabase.from('leads').select('*, lead_sources(id, nome), lead_segments(id, nome), profiles(id, nome)').order('updated_at', { ascending: false }),
       supabase.from('lead_sources').select('*').eq('ativo', true).order('nome'),
       supabase.from('lead_segments').select('*').eq('ativo', true).order('nome'),
-      supabase.from('profiles').select('id, nome, email, tipo_usuario, status, organization_id, created_at, updated_at').eq('status', 'ativo').order('nome'),
     ])
     setLeads((leadsRes.data as LeadWithRelations[]) ?? [])
     setSources(sourcesRes.data ?? [])
     setSegments(segmentsRes.data ?? [])
-    setProfiles(profilesRes.data ?? [])
     setLoading(false)
   }
+
+  // Lista e pipeline só mostram leads não arquivados (arquivados têm menu próprio)
+  const visibleLeads = useMemo(() => leads.filter(l => !l.arquivado), [leads])
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
     return leads.filter(l => {
+      if (l.arquivado) return false
       if (q && !l.nome.toLowerCase().includes(q) && !l.whatsapp.includes(q) && !l.tags?.some(t => t.toLowerCase().includes(q))) return false
       if (filterStatus && l.status !== filterStatus) return false
       if (filterOrigem && l.origem_id !== filterOrigem) return false
       if (filterSegmento && l.segmento_id !== filterSegmento) return false
-      if (filterResponsavel && l.responsavel_id !== filterResponsavel) return false
       if (filterDataDe && l.created_at.slice(0, 10) < filterDataDe) return false
       if (filterDataAte && l.created_at.slice(0, 10) > filterDataAte) return false
       return true
     })
-  }, [leads, search, filterStatus, filterOrigem, filterSegmento, filterResponsavel, filterDataDe, filterDataAte])
+  }, [leads, search, filterStatus, filterOrigem, filterSegmento, filterDataDe, filterDataAte])
 
   function addTag(val: string) {
     const t = val.trim()
@@ -186,9 +198,20 @@ export default function Leads() {
   }
 
   function resetForm() {
-    setForm({ nome: '', whatsapp: '', status: 'novo_lead', origem_id: '', segmento_id: '', responsavel_id: '', observacao: '', tags: [] })
+    setForm({ nome: '', whatsapp: '', status: 'novo_lead', origem_id: '', segmento_id: '', observacao: '', valor: '', tags: [] })
     setTagInput('')
     setFormError('')
+  }
+
+  const allSelected = filtered.length > 0 && filtered.every(l => selectedIds.has(l.id))
+
+  function toggleSelectAll() {
+    setSelectedIds(allSelected ? new Set() : new Set(filtered.map(l => l.id)))
+  }
+
+  function handleExport() {
+    const rows = selectedIds.size ? filtered.filter(l => selectedIds.has(l.id)) : filtered
+    exportLeadsToXlsx(rows, (v) => getStatusConfig(v).label, 'leads')
   }
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
@@ -198,9 +221,13 @@ export default function Leads() {
 
     const waNorm = normalizeWhatsApp(form.whatsapp)
 
-    // Check duplicate
-    const { data: dup } = await supabase.from('leads').select('id').eq('whatsapp', waNorm).maybeSingle()
-    if (dup) {
+    // Consolida tag digitada mas ainda não confirmada (sem Enter/vírgula)
+    const pendingTag = tagInput.trim()
+    const finalTags = pendingTag && !form.tags.includes(pendingTag) ? [...form.tags, pendingTag] : form.tags
+
+    // Check duplicate — considera as variantes do 9º dígito (igual ao import)
+    const { data: dups } = await supabase.from('leads').select('id').in('whatsapp', phoneVariants(form.whatsapp)).limit(1)
+    if (dups && dups.length) {
       setFormError('Já existe um lead com esse número de WhatsApp.')
       setSaving(false)
       return
@@ -216,7 +243,8 @@ export default function Leads() {
       segmento_id: form.segmento_id || null,
       responsavel_id: user?.id ?? null,
       observacao: form.observacao.trim() || null,
-      tags: form.tags,
+      valor: parseCurrency(form.valor),
+      tags: finalTags,
     }).select().single()
 
     if (error) {
@@ -249,10 +277,6 @@ export default function Leads() {
             <h1 className="text-slate-900 text-xl font-semibold">Leads</h1>
             <div className="flex items-center gap-2 mt-0.5">
               <p className="text-slate-500 text-sm">{leads.length} contato{leads.length !== 1 ? 's' : ''} no total</p>
-              <span className="flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                ao vivo
-              </span>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -321,6 +345,22 @@ export default function Leads() {
             )}
 
             <button
+              onClick={handleExport}
+              title={selectedIds.size ? 'Exportar apenas os leads selecionados' : 'Exportar para Excel (respeita os filtros)'}
+              className="flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-sm font-medium px-3 py-1.5 rounded-lg transition"
+            >
+              <Download size={15} />
+              {selectedIds.size ? `Exportar (${selectedIds.size})` : 'Exportar'}
+            </button>
+            <button
+              onClick={() => setShowImport(true)}
+              title="Importar base de leads (CSV ou Excel)"
+              className="flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-sm font-medium px-3 py-1.5 rounded-lg transition"
+            >
+              <Upload size={15} />
+              Importar
+            </button>
+            <button
               onClick={() => { resetForm(); setShowModal(true) }}
               className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition"
             >
@@ -342,43 +382,48 @@ export default function Leads() {
                 className="w-full pl-9 pr-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition"
               />
             </div>
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
-              <option value="">Todos os status</option>
-              {allStatuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-            <select value={filterOrigem} onChange={e => setFilterOrigem(e.target.value)} className="px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
-              <option value="">Todas as origens</option>
-              {sources.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-            </select>
-            <select value={filterSegmento} onChange={e => setFilterSegmento(e.target.value)} className="px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
-              <option value="">Todos os segmentos</option>
-              {segments.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-            </select>
-            <select value={filterResponsavel} onChange={e => setFilterResponsavel(e.target.value)} className="px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
-              <option value="">Todos os responsáveis</option>
-              {profiles.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-            </select>
+            <InputIcon icon={Flag}>
+              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
+                <option value="">Todos os status</option>
+                {allStatuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+            </InputIcon>
+            <InputIcon icon={Globe}>
+              <select value={filterOrigem} onChange={e => setFilterOrigem(e.target.value)} className="pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
+                <option value="">Todas as origens</option>
+                {sources.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+              </select>
+            </InputIcon>
+            <InputIcon icon={Tag}>
+              <select value={filterSegmento} onChange={e => setFilterSegmento(e.target.value)} className="pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
+                <option value="">Todos os segmentos</option>
+                {segments.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+              </select>
+            </InputIcon>
             <div className="flex items-center gap-1.5">
-              <CalendarDays size={14} className="text-slate-400 shrink-0" />
-              <input
-                type="date"
-                value={filterDataDe}
-                onChange={e => setFilterDataDe(e.target.value)}
-                title="Criado de"
-                className="px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-              />
+              <InputIcon icon={CalendarDays}>
+                <input
+                  type="date"
+                  value={filterDataDe}
+                  onChange={e => setFilterDataDe(e.target.value)}
+                  title="Criado de"
+                  className="pl-9 pr-2 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+                />
+              </InputIcon>
               <span className="text-slate-400 text-sm">até</span>
-              <input
-                type="date"
-                value={filterDataAte}
-                onChange={e => setFilterDataAte(e.target.value)}
-                title="Criado até"
-                className="px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-              />
+              <InputIcon icon={CalendarDays}>
+                <input
+                  type="date"
+                  value={filterDataAte}
+                  onChange={e => setFilterDataAte(e.target.value)}
+                  title="Criado até"
+                  className="pl-9 pr-2 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+                />
+              </InputIcon>
             </div>
-            {(search || filterStatus || filterOrigem || filterSegmento || filterResponsavel || filterDataDe || filterDataAte) && (
+            {(search || filterStatus || filterOrigem || filterSegmento || filterDataDe || filterDataAte) && (
               <button
-                onClick={() => { setSearch(''); setFilterStatus(''); setFilterOrigem(''); setFilterSegmento(''); setFilterResponsavel(''); setFilterDataDe(''); setFilterDataAte('') }}
+                onClick={() => { setSearch(''); setFilterStatus(''); setFilterOrigem(''); setFilterSegmento(''); setFilterDataDe(''); setFilterDataAte(''); setSelectedIds(new Set()) }}
                 className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-500 hover:bg-slate-50 transition"
               >
                 <X size={13} />
@@ -395,7 +440,11 @@ export default function Leads() {
               <Loader2 size={24} className="text-slate-300 animate-spin" />
             </div>
           ) : (
-            <PipelineBoard leads={leads} onLeadsChange={setLeads} columnsLocked={true} />
+            <PipelineBoard
+              leads={visibleLeads}
+              onLeadsChange={(next) => setLeads(prev => [...next, ...prev.filter(l => l.arquivado)])}
+              columnsLocked={true}
+            />
           )
         )}
 
@@ -414,10 +463,20 @@ export default function Leads() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-slate-100">
+                    <th className="px-4 py-3.5 w-10">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={toggleSelectAll}
+                        title="Selecionar todos"
+                        className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer accent-emerald-500"
+                      />
+                    </th>
                     <th className="text-left text-xs font-medium text-slate-500 px-5 py-3.5">Contato</th>
                     <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Status</th>
                     <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Origem</th>
                     <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Segmento</th>
+                    <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Valor</th>
                     <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Responsável</th>
                     <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Criado em</th>
                     <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Próx. follow-up</th>
@@ -429,8 +488,16 @@ export default function Leads() {
                     <tr
                       key={lead.id}
                       onClick={() => setSelectedLeadId(lead.id)}
-                      className="hover:bg-slate-50 cursor-pointer transition-colors"
+                      className={`hover:bg-slate-50 cursor-pointer transition-colors ${selectedIds.has(lead.id) ? 'bg-emerald-50/40' : ''}`}
                     >
+                      <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(lead.id)}
+                          onChange={() => toggleSelect(lead.id)}
+                          className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer accent-emerald-500"
+                        />
+                      </td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
                           <LeadAvatar nome={lead.nome} foto_url={lead.foto_url} />
@@ -443,7 +510,7 @@ export default function Leads() {
                               onClick={e => e.stopPropagation()}
                               className="text-xs text-slate-400 hover:text-emerald-600 flex items-center gap-1 transition"
                             >
-                              <MessageSquare size={11} />
+                              <WhatsAppIcon size={11} />
                               {formatWhatsApp(lead.whatsapp)}
                             </a>
                           </div>
@@ -452,6 +519,7 @@ export default function Leads() {
                       <td className="px-4 py-3.5"><StatusBadge status={lead.status} /></td>
                       <td className="px-4 py-3.5 text-sm text-slate-600">{lead.lead_sources?.nome ?? '—'}</td>
                       <td className="px-4 py-3.5 text-sm text-slate-600">{lead.lead_segments?.nome ?? '—'}</td>
+                      <td className="px-4 py-3.5 text-sm text-slate-700 tabular-nums whitespace-nowrap">{lead.valor != null ? formatCurrency(lead.valor) : '—'}</td>
                       <td className="px-4 py-3.5 text-sm text-slate-600">{lead.profiles?.nome ?? '—'}</td>
                       <td className="px-4 py-3.5 text-sm text-slate-500">{formatDateTime(lead.created_at)}</td>
                       <td className="px-4 py-3.5 text-sm text-slate-500">
@@ -473,7 +541,21 @@ export default function Leads() {
         )}
       </div>
 
-      <LeadDrawer leadId={selectedLeadId} onClose={() => setSelectedLeadId(null)} />
+      <LeadDrawer
+        leadId={selectedLeadId}
+        onClose={() => setSelectedLeadId(null)}
+        onSaved={(l) => setLeads(prev => prev.map(x => x.id === l.id ? l : x))}
+      />
+
+      <ImportLeadsModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={loadAll}
+        sources={sources}
+        segments={segments}
+        statuses={allStatuses}
+        existingLeads={leads}
+      />
 
       {/* Modal: Novo Lead */}
       {showModal && (
@@ -490,42 +572,59 @@ export default function Leads() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className={labelCls}>Nome *</label>
-                  <input value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} required placeholder="Nome do contato" className={inputCls} />
+                  <InputIcon icon={User}>
+                    <input value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} required placeholder="Nome do contato" className={iconInputCls} />
+                  </InputIcon>
                 </div>
                 <div className="col-span-2">
                   <label className={labelCls}>WhatsApp *</label>
-                  <input value={form.whatsapp} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))} required placeholder="(11) 99999-9999" className={inputCls} />
+                  <InputIcon icon={Phone}>
+                    <input value={form.whatsapp} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))} required placeholder="(11) 99999-9999" className={iconInputCls} />
+                  </InputIcon>
                 </div>
                 <div>
                   <label className={labelCls}>Status</label>
-                  <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as LeadStatus }))} className={selectCls}>
-                    {allStatuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>Responsável</label>
-                  <select value={form.responsavel_id} onChange={e => setForm(f => ({ ...f, responsavel_id: e.target.value }))} className={selectCls}>
-                    <option value="">Sem responsável</option>
-                    {profiles.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                  </select>
+                  <InputIcon icon={Flag}>
+                    <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as LeadStatus }))} className={iconSelectCls}>
+                      {allStatuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                  </InputIcon>
                 </div>
                 <div>
                   <label className={labelCls}>Origem</label>
-                  <select value={form.origem_id} onChange={e => setForm(f => ({ ...f, origem_id: e.target.value }))} className={selectCls}>
-                    <option value="">Selecionar</option>
-                    {sources.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-                  </select>
+                  <InputIcon icon={Globe}>
+                    <select value={form.origem_id} onChange={e => setForm(f => ({ ...f, origem_id: e.target.value }))} className={iconSelectCls}>
+                      <option value="">Selecionar</option>
+                      {sources.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                    </select>
+                  </InputIcon>
                 </div>
                 <div>
                   <label className={labelCls}>Segmento</label>
-                  <select value={form.segmento_id} onChange={e => setForm(f => ({ ...f, segmento_id: e.target.value }))} className={selectCls}>
-                    <option value="">Selecionar</option>
-                    {segments.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-                  </select>
+                  <InputIcon icon={Tag}>
+                    <select value={form.segmento_id} onChange={e => setForm(f => ({ ...f, segmento_id: e.target.value }))} className={iconSelectCls}>
+                      <option value="">Selecionar</option>
+                      {segments.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                    </select>
+                  </InputIcon>
+                </div>
+                <div className="col-span-2">
+                  <label className={labelCls}>Valor (R$)</label>
+                  <InputIcon icon={DollarSign}>
+                    <input
+                      value={form.valor}
+                      onChange={e => setForm(f => ({ ...f, valor: e.target.value }))}
+                      inputMode="decimal"
+                      placeholder="Ex: 1.500,00"
+                      className={iconInputCls}
+                    />
+                  </InputIcon>
+                  <p className="text-xs text-slate-400 mt-1">Valor da proposta/negócio deste lead (opcional)</p>
                 </div>
                 <div className="col-span-2">
                   <label className={labelCls}>Tags</label>
-                  <div className="border border-slate-200 rounded-lg p-2 flex flex-wrap gap-1.5 focus-within:ring-2 focus-within:ring-emerald-500 min-h-[42px]">
+                  <div className="relative border border-slate-200 rounded-lg p-2 pl-10 flex flex-wrap gap-1.5 focus-within:ring-2 focus-within:ring-emerald-500 min-h-[42px]">
+                    <Tags size={15} className="absolute left-3 top-3 text-slate-400 pointer-events-none" />
                     {form.tags.map(tag => (
                       <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full text-xs">
                         {tag}
@@ -547,7 +646,9 @@ export default function Leads() {
                 </div>
                 <div className="col-span-2">
                   <label className={labelCls}>Observação</label>
-                  <textarea value={form.observacao} onChange={e => setForm(f => ({ ...f, observacao: e.target.value }))} rows={3} placeholder="Informações sobre o atendimento..." className={inputCls + ' resize-none'} />
+                  <TextareaIcon icon={FileText}>
+                    <textarea value={form.observacao} onChange={e => setForm(f => ({ ...f, observacao: e.target.value }))} rows={3} placeholder="Informações sobre o atendimento..." className={iconTextareaCls} />
+                  </TextareaIcon>
                 </div>
               </div>
 

@@ -94,6 +94,15 @@
         err.isUnauthorized = true;
         throw err;
       }
+      if (!res.ok) {
+        // Qualquer outro erro (400/403/409/500...) vira exceção — evita exibir
+        // "salvo" quando o Supabase recusou a operação.
+        return res.json().catch(function() { return {}; }).then(function(body) {
+          var err = new Error((body && (body.message || body.error)) || ('HTTP ' + res.status));
+          err.status = res.status;
+          throw err;
+        });
+      }
       return res.json();
     });
   }
@@ -146,6 +155,12 @@
   function getStatuses(token) {
     return apiRequest('GET', '/rest/v1/lead_statuses?ativo=eq.true&select=*&order=ordem', null, token)
       .then(function(d) { return Array.isArray(d) ? d : []; });
+  }
+
+  function getOrg(token) {
+    // A RLS "Ver própria org" retorna apenas a organização do usuário logado
+    return apiRequest('GET', '/rest/v1/organizations?select=nome,nome_exibicao&limit=1', null, token)
+      .then(function(d) { return Array.isArray(d) && d.length ? d[0] : null; });
   }
 
   function loadLeadsCache(token) {
@@ -308,18 +323,52 @@
     }).join('');
   }
 
-  function tagsFieldHtml(tags) {
+  // Ícones (SVG inline, estilo lucide) para colocar dentro dos campos
+  function svgIcon(inner) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>';
+  }
+  var ICON = {
+    user:     svgIcon('<circle cx="12" cy="8" r="5"/><path d="M3 21a9 9 0 0 1 18 0"/>'),
+    phone:    svgIcon('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>'),
+    flag:     svgIcon('<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>'),
+    globe:    svgIcon('<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'),
+    tag:      svgIcon('<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>'),
+    dollar:   svgIcon('<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'),
+    file:     svgIcon('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>'),
+    list:     svgIcon('<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>'),
+    calendar: svgIcon('<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'),
+    clock:    svgIcon('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'),
+    mail:     svgIcon('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/>'),
+    lock:     svgIcon('<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
+  };
+
+  // Monta um .crm-field com ícone dentro do controle (input/select/textarea).
+  // `top=true` alinha o ícone ao topo (para textarea).
+  function fieldIcon(label, icon, controlHtml, top) {
+    return '<div class="crm-field"><label class="crm-label">' + label + '</label>'
+      + '<div class="crm-input-wrap' + (top ? ' crm-wrap-top' : '') + '">' + icon + controlHtml + '</div></div>';
+  }
+
+  // Conteúdo interno do container de tags (chips + input) — reusado no render
+  // completo e no renderTagsOnly (atualização no lugar, sem reconstruir o painel)
+  function tagsInnerHtml(tags) {
     var chips = (tags || []).map(function(tag) {
       return '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;background:#f1f5f9;color:#475569;border-radius:999px;font-size:11px;font-weight:500">' +
         escapeHtml(tag) +
         '<button type="button" data-remove-tag="' + escapeHtml(tag) + '" style="background:none;border:none;cursor:pointer;padding:0 0 0 2px;line-height:1;color:#94a3b8;font-size:14px;display:flex;align-items:center">\xd7</button>' +
         '</span>';
     }).join('');
+    return chips +
+      '<input id="crm-tag-input" type="text" placeholder="' + ((tags && tags.length) ? '' : 'Adicionar tag...') + '" style="border:none;outline:none;font-size:12px;color:#0f172a;background:transparent;min-width:80px;flex:1;padding:1px 2px;font-family:inherit" />';
+  }
+
+  function tagsFieldHtml(tags) {
     return '<div class="crm-field">' +
       '<label class="crm-label">Tags</label>' +
-      '<div id="crm-tags-container" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;min-height:36px;background:#fff;cursor:text" onclick="document.getElementById(\'crm-tag-input\')&&document.getElementById(\'crm-tag-input\').focus()">' +
-        chips +
-        '<input id="crm-tag-input" type="text" placeholder="' + ((tags && tags.length) ? '' : 'Adicionar tag...') + '" style="border:none;outline:none;font-size:12px;color:#0f172a;background:transparent;min-width:80px;flex:1;padding:1px 2px;font-family:inherit" />' +
+      '<div class="crm-input-wrap crm-wrap-top">' + ICON.tag +
+        '<div id="crm-tags-container" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px 8px 6px 30px;border:1px solid #e2e8f0;border-radius:8px;min-height:36px;background:#fff;cursor:text" onclick="document.getElementById(\'crm-tag-input\')&&document.getElementById(\'crm-tag-input\').focus()">' +
+          tagsInnerHtml(tags) +
+        '</div>' +
       '</div>' +
       '<p style="font-size:10px;color:#94a3b8;margin:3px 0 0">Enter ou vírgula para adicionar</p>' +
     '</div>';
@@ -576,8 +625,8 @@
     pendingFollowups: 0,
     avisosList: [],  // lista detalhada de atividades pendentes para a aba Avisos Gerais
     current: { phone: null, name: null, lead: null, photo: null },
-    ui: { view: 'loading', saving: false, error: '', success: '', tab: 'dados' },
-    form: { nome: '', status: 'novo_lead', origem_id: '', segmento_id: '', observacao: '', tags: [] },
+    ui: { view: 'loading', saving: false, error: '', success: '', tab: 'dados', animate: false },
+    form: { nome: '', status: 'novo_lead', origem_id: '', segmento_id: '', observacao: '', valor: '', tags: [] },
     followupForm: { tipo: 'enviar_mensagem', data: '', hora: '', descricao: '' },
   };
 
@@ -646,7 +695,7 @@
     root.innerHTML = [
       '<div class="crm-header">',
         '<div class="crm-logo">',
-          '<span class="crm-logo-text">4U Connect CRM</span>',
+          '<span class="crm-logo-text">Connect CRM</span>',
         '</div>',
         '<div style="display:flex;align-items:center;gap:6px">',
           '<a id="crm-followup-badge" href="' + CRM_URL + '/followups" target="_blank"',
@@ -691,6 +740,8 @@
       root.classList.remove('crm-hidden');
       toggle.classList.remove('crm-toggle-hidden'); // move para right:576px (colado ao painel)
       toggle.querySelector('path').setAttribute('d', 'M8 2L4 6L8 10');
+      state.ui.animate = true; // anima ao expandir o painel
+      render();
     } else {
       root.classList.add('crm-hidden');
       toggle.classList.add('crm-toggle-hidden'); // move para right:0 (aba na borda direita)
@@ -1305,12 +1356,13 @@
         error ? '<div class="crm-alert crm-alert-error">' + escapeHtml(error) + '</div>' : '',
         success ? '<div class="crm-alert crm-alert-success">' + escapeHtml(success) + '</div>' : '',
         '<form id="crm-save-form">',
-          '<div class="crm-field"><label class="crm-label">Nome</label><input class="crm-input" type="text" id="crm-nome" value="' + escapeHtml(form.nome) + '" placeholder="Nome do contato" required /></div>',
-          '<div class="crm-field"><label class="crm-label">Status</label><select class="crm-select" id="crm-status">' + statusOptions(form.status) + '</select></div>',
-          '<div class="crm-field"><label class="crm-label">Origem</label><select class="crm-select" id="crm-origem">' + sourceOptions(sources, form.origem_id) + '</select></div>',
-          '<div class="crm-field"><label class="crm-label">Segmento</label><select class="crm-select" id="crm-segmento">' + segmentOptions(segments, form.segmento_id) + '</select></div>',
+          fieldIcon('Nome', ICON.user, '<input class="crm-input crm-has-icon" type="text" id="crm-nome" value="' + escapeHtml(form.nome) + '" placeholder="Nome do contato" required />'),
+          fieldIcon('Status', ICON.flag, '<select class="crm-select crm-has-icon" id="crm-status">' + statusOptions(form.status) + '</select>'),
+          fieldIcon('Origem', ICON.globe, '<select class="crm-select crm-has-icon" id="crm-origem">' + sourceOptions(sources, form.origem_id) + '</select>'),
+          fieldIcon('Segmento', ICON.tag, '<select class="crm-select crm-has-icon" id="crm-segmento">' + segmentOptions(segments, form.segmento_id) + '</select>'),
+          fieldIcon('Valor (R$)', ICON.dollar, '<input class="crm-input crm-has-icon" type="text" inputmode="decimal" id="crm-valor" value="' + escapeHtml(form.valor != null ? String(form.valor) : '') + '" placeholder="Ex: 1.500,00" />'),
           tagsFieldHtml(form.tags),
-          '<div class="crm-field"><label class="crm-label">Observação</label><textarea class="crm-textarea" id="crm-obs" placeholder="Informações do atendimento...">' + escapeHtml(form.observacao) + '</textarea></div>',
+          fieldIcon('Observação', ICON.file, '<textarea class="crm-textarea crm-has-icon" id="crm-obs" placeholder="Informações do atendimento...">' + escapeHtml(form.observacao) + '</textarea>', true),
           '<button class="crm-btn crm-btn-primary" type="submit"' + (saving ? ' disabled' : '') + '>',
             saving ? '<span class="crm-spinner"></span> Salvando...' : 'Salvar no CRM',
           '</button>',
@@ -1362,12 +1414,13 @@
         error   ? '<div class="crm-alert crm-alert-error">'   + escapeHtml(error)   + '</div>' : '',
         success ? '<div class="crm-alert crm-alert-success">' + escapeHtml(success) + '</div>' : '',
         '<form id="crm-update-form">',
-          '<div class="crm-field"><label class="crm-label">Nome</label><input class="crm-input" type="text" id="crm-nome" value="' + escapeHtml(form.nome) + '" placeholder="Nome do contato" /></div>',
-          '<div class="crm-field"><label class="crm-label">Status</label><select class="crm-select" id="crm-status">' + statusOptions(form.status) + '</select></div>',
-          '<div class="crm-field"><label class="crm-label">Origem</label><select class="crm-select" id="crm-origem">' + sourceOptions(sources, form.origem_id) + '</select></div>',
-          '<div class="crm-field"><label class="crm-label">Segmento</label><select class="crm-select" id="crm-segmento">' + segmentOptions(segments, form.segmento_id) + '</select></div>',
+          fieldIcon('Nome', ICON.user, '<input class="crm-input crm-has-icon" type="text" id="crm-nome" value="' + escapeHtml(form.nome) + '" placeholder="Nome do contato" />'),
+          fieldIcon('Status', ICON.flag, '<select class="crm-select crm-has-icon" id="crm-status">' + statusOptions(form.status) + '</select>'),
+          fieldIcon('Origem', ICON.globe, '<select class="crm-select crm-has-icon" id="crm-origem">' + sourceOptions(sources, form.origem_id) + '</select>'),
+          fieldIcon('Segmento', ICON.tag, '<select class="crm-select crm-has-icon" id="crm-segmento">' + segmentOptions(segments, form.segmento_id) + '</select>'),
+          fieldIcon('Valor (R$)', ICON.dollar, '<input class="crm-input crm-has-icon" type="text" inputmode="decimal" id="crm-valor" value="' + escapeHtml(form.valor != null ? String(form.valor) : '') + '" placeholder="Ex: 1.500,00" />'),
           tagsFieldHtml(form.tags),
-          '<div class="crm-field"><label class="crm-label">Observação</label><textarea class="crm-textarea" id="crm-obs" placeholder="Informações do atendimento...">' + escapeHtml(form.observacao) + '</textarea></div>',
+          fieldIcon('Observação', ICON.file, '<textarea class="crm-textarea crm-has-icon" id="crm-obs" placeholder="Informações do atendimento...">' + escapeHtml(form.observacao) + '</textarea>', true),
           '<button class="crm-btn crm-btn-primary" type="submit"' + (saving ? ' disabled' : '') + '>',
             saving ? '<span class="crm-spinner"></span> Salvando...' : 'Salvar alterações',
           '</button>',
@@ -1386,12 +1439,12 @@
         success ? '<div class="crm-alert crm-alert-success">' + escapeHtml(success) + '</div>' : '',
         '<p style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 12px">Agendar novo follow-up</p>',
         '<form id="crm-followup-form">',
-          '<div class="crm-field"><label class="crm-label">Tipo</label><select class="crm-select" id="crm-fu-tipo">' + activityTypeOptions(followupForm.tipo) + '</select></div>',
+          fieldIcon('Tipo', ICON.list, '<select class="crm-select crm-has-icon" id="crm-fu-tipo">' + activityTypeOptions(followupForm.tipo) + '</select>'),
           '<div class="crm-followup-row" style="margin-bottom:10px">',
-            '<div class="crm-field" style="margin-bottom:0"><label class="crm-label">Data</label><input class="crm-input" type="date" id="crm-fu-data" value="' + escapeHtml(followupForm.data) + '" required /></div>',
-            '<div class="crm-field" style="margin-bottom:0"><label class="crm-label">Hora</label><input class="crm-input" type="time" id="crm-fu-hora" value="' + escapeHtml(followupForm.hora) + '" required /></div>',
+            '<div class="crm-field" style="margin-bottom:0"><label class="crm-label">Data</label><div class="crm-input-wrap">' + ICON.calendar + '<input class="crm-input crm-has-icon" type="date" id="crm-fu-data" value="' + escapeHtml(followupForm.data) + '" required /></div></div>',
+            '<div class="crm-field" style="margin-bottom:0"><label class="crm-label">Hora</label><div class="crm-input-wrap">' + ICON.clock + '<input class="crm-input crm-has-icon" type="time" id="crm-fu-hora" value="' + escapeHtml(followupForm.hora) + '" required /></div></div>',
           '</div>',
-          '<div class="crm-field"><label class="crm-label">Descrição</label><input class="crm-input" type="text" id="crm-fu-desc" value="' + escapeHtml(followupForm.descricao) + '" placeholder="Opcional..." /></div>',
+          fieldIcon('Descrição', ICON.file, '<input class="crm-input crm-has-icon" type="text" id="crm-fu-desc" value="' + escapeHtml(followupForm.descricao) + '" placeholder="Opcional..." />'),
           '<button class="crm-btn crm-btn-primary" type="submit"' + (saving ? ' disabled' : '') + '>',
             saving ? '<span class="crm-spinner"></span> Agendando...' : 'Agendar follow-up',
           '</button>',
@@ -1471,14 +1524,18 @@
     content.innerHTML = html;
     attachEvents();
 
-    // Stagger sequencial: anima cada elemento-chave em ordem de aparição no DOM
-    var staggerEls = content.querySelectorAll(
-      '.crm-contact, .crm-field, .crm-followup-form, .crm-aviso-item, .crm-btn-group, .crm-center'
-    );
-    Array.prototype.forEach.call(staggerEls, function(el, i) {
-      el.style.animation = 'crm-content-appear 0.22s ease both';
-      el.style.animationDelay = (i * 50) + 'ms';
-    });
+    // Stagger sequencial — SÓ quando solicitado (abrir/expandir/trocar aba/trocar
+    // contato). Em saves/polling/atualizações o flag fica false → sem fade-in repetido.
+    if (state.ui.animate) {
+      var staggerEls = content.querySelectorAll(
+        '.crm-contact, .crm-field, .crm-followup-form, .crm-aviso-item, .crm-btn-group, .crm-center'
+      );
+      Array.prototype.forEach.call(staggerEls, function(el, i) {
+        el.style.animation = 'crm-content-appear 0.22s ease both';
+        el.style.animationDelay = (i * 50) + 'ms';
+      });
+    }
+    state.ui.animate = false;
 
     // Controla visibilidade do painel baseado no estado da conversa
     var rootEl = document.getElementById('crm-4u-root');
@@ -1517,18 +1574,21 @@
         state.ui.tab = 'dados';
         state.ui.error = '';
         state.ui.success = '';
+        state.ui.animate = true; // anima ao trocar de aba
         render();
       });
       if (tabFuBtn) tabFuBtn.addEventListener('click', function() {
         state.ui.tab = 'followup';
         state.ui.error = '';
         state.ui.success = '';
+        state.ui.animate = true; // anima ao trocar de aba
         render();
       });
       if (tabAvisosBtn) tabAvisosBtn.addEventListener('click', function() {
         state.ui.tab = 'avisos';
         state.ui.error = '';
         state.ui.success = '';
+        state.ui.animate = true; // anima ao trocar de aba
         // Recarrega a lista ao abrir a aba
         if (state.auth) fetchPendingFollowups(state.auth.access_token);
         render();
@@ -1543,12 +1603,28 @@
     }
   }
 
+  // Converte "1.500,00", "R$ 2000", "1500.50" em número (ou null)
+  function parseValorBR(input) {
+    if (input == null || input === '') return null;
+    if (typeof input === 'number') return isFinite(input) ? input : null;
+    var s = String(input).replace(/[^\d.,-]/g, '').trim();
+    if (!s) return null;
+    if (s.indexOf(',') !== -1 && s.indexOf('.') !== -1) {
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else if (s.indexOf(',') !== -1) {
+      s = s.replace(',', '.');
+    }
+    var n = parseFloat(s);
+    return isFinite(n) ? n : null;
+  }
+
   function syncFormInputs() {
     var inputs = {
       'crm-status':   function(v) { state.form.status = v; },
       'crm-origem':   function(v) { state.form.origem_id = v; },
       'crm-segmento': function(v) { state.form.segmento_id = v; },
       'crm-obs':      function(v) { state.form.observacao = v; },
+      'crm-valor':    function(v) { state.form.valor = v; },
       'crm-nome':     function(v) { state.form.nome = v; },
     };
 
@@ -1572,24 +1648,7 @@
       if (el) el.addEventListener('input', function(e) { fuInputs[id](e.target.value); });
     });
 
-    var tagInput = document.getElementById('crm-tag-input');
-    if (tagInput) {
-      tagInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' || e.key === ',') {
-          e.preventDefault();
-          var val = tagInput.value.trim().replace(/,/g, '');
-          if (val && state.form.tags.indexOf(val) === -1) {
-            state.form.tags = state.form.tags.concat([val]);
-            render();
-          } else {
-            tagInput.value = '';
-          }
-        } else if (e.key === 'Backspace' && !tagInput.value && state.form.tags.length > 0) {
-          state.form.tags = state.form.tags.slice(0, -1);
-          render();
-        }
-      });
-    }
+    bindTagInputKeydown();
 
     var tagsContainer = document.getElementById('crm-tags-container');
     if (tagsContainer) {
@@ -1599,10 +1658,43 @@
         if (btn) {
           var tag = btn.getAttribute('data-remove-tag');
           state.form.tags = state.form.tags.filter(function(t) { return t !== tag; });
-          render();
+          renderTagsOnly();
         }
       });
     }
+  }
+
+  // Vincula o keydown do input de tags (add via Enter/vírgula, remove via Backspace).
+  // Reusado no bind inicial e no renderTagsOnly (o input é recriado a cada atualização).
+  function bindTagInputKeydown() {
+    var tagInput = document.getElementById('crm-tag-input');
+    if (!tagInput) return;
+    tagInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        var val = tagInput.value.trim().replace(/,/g, '');
+        if (val && state.form.tags.indexOf(val) === -1) {
+          state.form.tags = state.form.tags.concat([val]);
+          renderTagsOnly();
+        } else {
+          tagInput.value = '';
+        }
+      } else if (e.key === 'Backspace' && !tagInput.value && state.form.tags.length > 0) {
+        state.form.tags = state.form.tags.slice(0, -1);
+        renderTagsOnly();
+      }
+    });
+  }
+
+  // Atualiza SÓ os chips de tags no lugar (sem reconstruir o painel inteiro),
+  // preservando o foco do input — evita o "pisca" a cada tag.
+  function renderTagsOnly() {
+    var container = document.getElementById('crm-tags-container');
+    if (!container) { render(); return; }
+    container.innerHTML = tagsInnerHtml(state.form.tags || []);
+    bindTagInputKeydown();
+    var input = document.getElementById('crm-tag-input');
+    if (input) input.focus();
   }
 
   /* ===== HANDLERS ===== */
@@ -1636,7 +1728,7 @@
     getLeadByPhone(phone, token).then(function(existing) {
       if (existing) {
         state.current.lead = existing;
-        state.form = { nome: existing.nome, status: existing.status, origem_id: existing.origem_id || '', segmento_id: existing.segmento_id || '', observacao: existing.observacao || '', tags: Array.isArray(existing.tags) ? existing.tags : [] };
+        state.form = { nome: existing.nome, status: existing.status, origem_id: existing.origem_id || '', segmento_id: existing.segmento_id || '', observacao: existing.observacao || '', valor: existing.valor != null ? String(existing.valor) : '', tags: Array.isArray(existing.tags) ? existing.tags : [] };
         state.ui.view = 'existing-lead';
         state.ui.saving = false;
         state.ui.error = 'Lead já existe — carregado.';
@@ -1652,6 +1744,7 @@
         segmento_id: segmento_id || null,
         responsavel_id: state.auth.user_id || null,
         observacao: observacao.trim() || null,
+        valor: parseValorBR(state.form.valor),
         foto_url: state.current.photo || null,
         tags: state.form.tags || [],
       }, token).then(function(newLead) {
@@ -1721,6 +1814,7 @@
       origem_id: origem_id || null,
       segmento_id: segmento_id || null,
       observacao: observacao.trim() || null,
+      valor: parseValorBR(state.form.valor),
       tags: state.form.tags || [],
       foto_url: state.current.photo || state.current.lead.foto_url || null,
     }, token).then(function(updated) {
@@ -1800,6 +1894,13 @@
 
   /* ===== DETECÇÃO E CARREGAMENTO ===== */
 
+  function applyBranding() {
+    var el = document.querySelector('.crm-logo-text');
+    if (!el) return;
+    var company = (state.orgName || '').trim();
+    el.textContent = company ? 'Connect CRM — ' + company : 'Connect CRM';
+  }
+
   function loadMeta() {
     if (!state.auth) return Promise.resolve();
     return Promise.all([
@@ -1807,10 +1908,14 @@
       getSegments(state.auth.access_token),
       getStatuses(state.auth.access_token),
       loadLeadsCache(state.auth.access_token),
+      getOrg(state.auth.access_token),
     ]).then(function(results) {
       state.sources = Array.isArray(results[0]) ? results[0] : [];
       state.segments = Array.isArray(results[1]) ? results[1] : [];
       state.statuses = Array.isArray(results[2]) ? results[2] : [];
+      var org = results[4];
+      if (org) state.orgName = (org.nome_exibicao && org.nome_exibicao.trim()) || org.nome || '';
+      applyBranding();
       console.log('[4U CRM] Meta carregada: ' + state.sources.length + ' origens, ' + state.segments.length + ' segmentos, ' + state.statuses.length + ' statuses.');
     }).catch(function(err) {
       if (err && err.isUnauthorized) { handleUnauthorized(); }
@@ -1831,7 +1936,7 @@
         if (!fresh || !state.current.lead || fresh.id !== state.current.lead.id) return;
         if (state.ui.view !== 'existing-lead' || state.ui.saving) return;
 
-        var changed = ['status', 'nome', 'observacao', 'origem_id', 'segmento_id', 'proximo_followup'].some(function (k) {
+        var changed = ['status', 'nome', 'observacao', 'origem_id', 'segmento_id', 'valor', 'proximo_followup'].some(function (k) {
           return fresh[k] !== state.current.lead[k];
         });
 
@@ -1859,6 +1964,7 @@
           state.form.origem_id   = fresh.origem_id   || '';
           state.form.segmento_id = fresh.segmento_id || '';
           state.form.observacao  = fresh.observacao  || '';
+          state.form.valor       = fresh.valor != null ? String(fresh.valor) : '';
           state.form.tags        = freshTags;
           render();
         }
@@ -1917,7 +2023,10 @@
         return;
       }
 
-      if (phone === state.current.phone && (state.ui.view === 'existing-lead' || state.ui.view === 'new-lead')) {
+      // Já carregando/exibindo este mesmo contato → não reprocessa.
+      // Inclui 'loading' para evitar o loop de render enquanto a query async resolve
+      // (o WhatsApp muta o DOM intensamente e re-dispara o detect várias vezes).
+      if (phone === state.current.phone && (state.ui.view === 'existing-lead' || state.ui.view === 'new-lead' || state.ui.view === 'loading')) {
         return;
       }
 
@@ -1950,6 +2059,7 @@
             origem_id:   lead.origem_id || '',
             segmento_id: lead.segmento_id || '',
             observacao:  lead.observacao || '',
+            valor:       lead.valor != null ? String(lead.valor) : '',
             tags:        Array.isArray(lead.tags) ? lead.tags : [],
           };
           state.ui.view = 'existing-lead';
@@ -1963,11 +2073,12 @@
           startLeadPolling();
         } else {
           stopLeadPolling();
-          state.form = { nome: name || '', status: 'novo_lead', origem_id: '', segmento_id: '', observacao: '', tags: [] };
+          state.form = { nome: name || '', status: 'novo_lead', origem_id: '', segmento_id: '', observacao: '', valor: '', tags: [] };
           state.ui.view = 'new-lead';
           console.log('[4U CRM] Contato não cadastrado:', normalPhone);
         }
 
+        state.ui.animate = true; // anima ao abrir o CRM / trocar de contato
         render();
       }).catch(function(err) {
         console.error('[4U CRM] Erro ao buscar lead:', err);
@@ -2009,10 +2120,13 @@
         getSources(state.auth.access_token),
         getSegments(state.auth.access_token),
         getStatuses(state.auth.access_token),
+        getOrg(state.auth.access_token),
       ]).then(function(results) {
         state.sources  = Array.isArray(results[0]) ? results[0] : state.sources;
         state.segments = Array.isArray(results[1]) ? results[1] : state.segments;
         state.statuses = Array.isArray(results[2]) ? results[2] : state.statuses;
+        var org = results[3];
+        if (org) { state.orgName = (org.nome_exibicao && org.nome_exibicao.trim()) || org.nome || ''; applyBranding(); }
       }).catch(function() {});
     }, 30000);
   }

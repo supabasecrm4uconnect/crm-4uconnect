@@ -1,8 +1,10 @@
+import { memo } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 
-import { MessageSquare, Clock, AlertCircle, User, Tag, Globe } from 'lucide-react'
+import { Clock, AlertCircle, User, Tag, Globe, DollarSign } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { formatWhatsApp, whatsappLink, localDateStr, formatDateTime } from '../../lib/helpers'
+import { formatWhatsApp, whatsappLink, localDateStr, formatDateTime, formatCurrency } from '../../lib/helpers'
+import WhatsAppIcon from '../WhatsAppIcon'
 import LeadAvatar from '../LeadAvatar'
 import type { LeadWithRelations } from '../../types'
 
@@ -11,7 +13,7 @@ interface LeadCardProps {
   disabled?: boolean
 }
 
-export default function LeadCard({ lead, disabled = false }: LeadCardProps) {
+function LeadCard({ lead, disabled = false }: LeadCardProps) {
   const navigate = useNavigate()
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
@@ -104,6 +106,12 @@ export default function LeadCard({ lead, disabled = false }: LeadCardProps) {
               <span className="truncate"><span className="font-medium text-slate-400">Responsável:</span> {lead.profiles.nome}</span>
             </div>
           )}
+          {lead.valor != null && (
+            <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium" title={`Valor: ${formatCurrency(lead.valor)}`}>
+              <DollarSign size={11} className="text-emerald-500 shrink-0" />
+              <span className="truncate">{formatCurrency(lead.valor)}</span>
+            </div>
+          )}
         </div>
 
         {/* Observação */}
@@ -122,7 +130,7 @@ export default function LeadCard({ lead, disabled = false }: LeadCardProps) {
             onClick={(e) => e.stopPropagation()}
             className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-emerald-600 transition w-fit"
           >
-            <MessageSquare size={11} />
+            <WhatsAppIcon size={11} />
             <span className="truncate">{formatWhatsApp(lead.whatsapp)}</span>
           </a>
 
@@ -159,3 +167,5 @@ export default function LeadCard({ lead, disabled = false }: LeadCardProps) {
     </div>
   )
 }
+
+export default memo(LeadCard)

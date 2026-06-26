@@ -160,7 +160,7 @@ export default function StatusPage() {
             <div className="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center">
               <Wifi size={15} className="text-white" />
             </div>
-            <span className="font-semibold text-slate-800 text-sm">4U Connect — Status</span>
+            <span className="font-semibold text-slate-800 text-sm">Connect CRM — Status</span>
           </div>
           <a
             href="/login"
@@ -220,7 +220,7 @@ export default function StatusPage() {
       </main>
 
       <footer className="text-center text-xs text-slate-400 pb-6">
-        4U Connect CRM · Atualiza automaticamente a cada {REFRESH_INTERVAL / 1000}s
+        Connect CRM · Atualiza automaticamente a cada {REFRESH_INTERVAL / 1000}s
       </footer>
     </div>
   )

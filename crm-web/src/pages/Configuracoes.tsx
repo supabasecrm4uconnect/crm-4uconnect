@@ -1,23 +1,26 @@
 import { useEffect, useState } from 'react'
-import { Plus, Loader2, ToggleLeft, ToggleRight, X, Trash2, UserCog, GitBranch, Globe, Tag, Users } from 'lucide-react'
+import { Plus, Loader2, ToggleLeft, ToggleRight, X, Trash2, UserCog, GitBranch, Globe, Tag, Users, Building2, Upload, Image as ImageIcon, CalendarClock } from 'lucide-react'
+import { InputIcon, iconInputCls } from '../components/FieldIcon'
 import Layout from '../components/Layout'
 import { supabase } from '../lib/supabase'
 import { useStatuses, COLOR_PRESETS, type StatusConfig } from '../contexts/StatusesContext'
-import type { LeadSource, LeadSegment, Profile } from '../types'
+import { useBranding } from '../contexts/BrandingContext'
+import type { LeadSource, LeadSegment, Profile, Organization } from '../types'
 
-const inputCls = 'flex-1 px-3.5 py-2.5 rounded-lg border border-slate-200 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition'
 
-type Tab = 'pipeline' | 'origens' | 'segmentos' | 'usuarios'
+type Tab = 'pipeline' | 'origens' | 'segmentos' | 'usuarios' | 'empresa'
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'pipeline',  label: 'Pipeline',   icon: GitBranch },
   { id: 'origens',   label: 'Origens',    icon: Globe     },
   { id: 'segmentos', label: 'Segmentos',  icon: Tag       },
   { id: 'usuarios',  label: 'Usuários',   icon: Users     },
+  { id: 'empresa',   label: 'Empresa',    icon: Building2 },
 ]
 
 export default function Configuracoes() {
   const { statuses, refresh: refreshStatuses, updateOne: updateStatus } = useStatuses()
+  const { refresh: refreshBranding } = useBranding()
   const [sources,  setSources]  = useState<LeadSource[]>([])
   const [segments, setSegments] = useState<LeadSegment[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
@@ -42,6 +45,17 @@ export default function Configuracoes() {
   const [editingStatus,   setEditingStatus]   = useState<StatusConfig | null>(null)
   const [editLabel,       setEditLabel]       = useState('')
 
+  // Empresa / Marca
+  const [org,            setOrg]            = useState<Organization | null>(null)
+  const [orgNome,        setOrgNome]        = useState('')
+  const [orgAutoDias,    setOrgAutoDias]    = useState('')
+  const [savingMarca,    setSavingMarca]    = useState(false)
+  const [marcaSaved,     setMarcaSaved]     = useState(false)
+  const [savingArq,      setSavingArq]      = useState(false)
+  const [arqSaved,       setArqSaved]       = useState(false)
+  const [uploadingLogo,  setUploadingLogo]  = useState(false)
+  const [orgError,       setOrgError]       = useState('')
+
   useEffect(() => { loadAll() }, [])
 
   async function loadAll() {
@@ -61,8 +75,80 @@ export default function Configuracoes() {
       const mp = myProfileRes.data as { tipo_usuario: string; organization_id: string }
       setIsAdmin(mp.tipo_usuario === 'admin')
       setMyOrgId(mp.organization_id)
+      if (mp.organization_id) {
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('id, nome, nome_exibicao, logo_url, auto_arquivar_dias, created_at')
+          .eq('id', mp.organization_id).single()
+        if (orgData) {
+          const o = orgData as Organization
+          setOrg(o)
+          setOrgNome(o.nome_exibicao ?? '')
+          setOrgAutoDias(o.auto_arquivar_dias != null ? String(o.auto_arquivar_dias) : '')
+        }
+      }
     }
     setLoading(false)
+  }
+
+  // --- Empresa / Marca ---
+  async function saveMarca(e: React.FormEvent) {
+    e.preventDefault()
+    if (!myOrgId) return
+    setSavingMarca(true)
+    setMarcaSaved(false)
+    setOrgError('')
+    const { error } = await supabase.from('organizations').update({
+      nome_exibicao: orgNome.trim() || null,
+    }).eq('id', myOrgId)
+    setSavingMarca(false)
+    if (error) { setOrgError('Não foi possível salvar a marca. Tente novamente.'); return }
+    setMarcaSaved(true)
+    await refreshBranding()
+    setTimeout(() => setMarcaSaved(false), 2500)
+  }
+
+  async function saveArquivamento(e: React.FormEvent) {
+    e.preventDefault()
+    if (!myOrgId) return
+    setSavingArq(true)
+    setArqSaved(false)
+    setOrgError('')
+    const dias = orgAutoDias.trim() === '' ? null : Math.max(0, parseInt(orgAutoDias, 10) || 0)
+    const { error } = await supabase.from('organizations').update({
+      auto_arquivar_dias: dias,
+    }).eq('id', myOrgId)
+    setSavingArq(false)
+    if (error) { setOrgError('Não foi possível salvar o arquivamento. Tente novamente.'); return }
+    setArqSaved(true)
+    setTimeout(() => setArqSaved(false), 2500)
+  }
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !myOrgId) return
+    setUploadingLogo(true)
+    setOrgError('')
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase()
+    const path = `${myOrgId}/logo_${Date.now()}.${ext}`
+    const { error: upErr } = await supabase.storage.from('org-logos').upload(path, file, { upsert: true })
+    if (upErr) { setUploadingLogo(false); e.target.value = ''; setOrgError('Falha ao enviar o logo.'); return }
+    const { data: pub } = supabase.storage.from('org-logos').getPublicUrl(path)
+    const { error: updErr } = await supabase.from('organizations').update({ logo_url: pub.publicUrl }).eq('id', myOrgId)
+    if (updErr) { setUploadingLogo(false); e.target.value = ''; setOrgError('Logo enviado, mas falha ao salvar. Tente novamente.'); return }
+    setOrg(prev => prev ? { ...prev, logo_url: pub.publicUrl } : prev)
+    await refreshBranding()
+    setUploadingLogo(false)
+    e.target.value = ''
+  }
+
+  async function removeLogo() {
+    if (!myOrgId) return
+    setOrgError('')
+    const { error } = await supabase.from('organizations').update({ logo_url: null }).eq('id', myOrgId)
+    if (error) { setOrgError('Não foi possível remover o logo.'); return }
+    setOrg(prev => prev ? { ...prev, logo_url: null } : prev)
+    await refreshBranding()
   }
 
   // --- Sources ---
@@ -284,7 +370,9 @@ export default function Configuracoes() {
                 ))}
               </div>
               <form onSubmit={addSource} className="flex gap-2">
-                <input value={newSource} onChange={e => setNewSource(e.target.value)} placeholder="Nova origem..." className={inputCls} />
+                <InputIcon icon={Globe} className="flex-1">
+                  <input value={newSource} onChange={e => setNewSource(e.target.value)} placeholder="Nova origem..." className={iconInputCls} />
+                </InputIcon>
                 <button type="submit" disabled={savingSource || !newSource.trim()} className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium transition shrink-0">
                   {savingSource ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                   Adicionar
@@ -331,7 +419,9 @@ export default function Configuracoes() {
                 ))}
               </div>
               <form onSubmit={addSegment} className="flex gap-2">
-                <input value={newSegment} onChange={e => setNewSegment(e.target.value)} placeholder="Novo segmento..." className={inputCls} />
+                <InputIcon icon={Tag} className="flex-1">
+                  <input value={newSegment} onChange={e => setNewSegment(e.target.value)} placeholder="Novo segmento..." className={iconInputCls} />
+                </InputIcon>
                 <button type="submit" disabled={savingSegment || !newSegment.trim()} className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium transition shrink-0">
                   {savingSegment ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                   Adicionar
@@ -404,6 +494,101 @@ export default function Configuracoes() {
           </div>
         )}
 
+        {/* Tab: Empresa / Marca */}
+        {activeTab === 'empresa' && orgError && (
+          <div className="bg-red-50 border border-red-100 rounded-lg px-3.5 py-2.5 mb-4">
+            <p className="text-red-600 text-sm">{orgError}</p>
+          </div>
+        )}
+        {activeTab === 'empresa' && (
+          <div className="space-y-6">
+            {/* Marca */}
+            <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100">
+                <h2 className="text-slate-900 text-sm font-semibold">Marca da empresa</h2>
+                <p className="text-slate-400 text-xs mt-0.5">Nome e logo exibidos no CRM para esta organização</p>
+              </div>
+              <form onSubmit={saveMarca} className="px-6 py-5 space-y-5">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Nome de exibição</label>
+                  <InputIcon icon={Building2}>
+                    <input
+                      value={orgNome}
+                      onChange={e => setOrgNome(e.target.value)}
+                      placeholder={org?.nome || 'Ex: Immovi Contabilidade'}
+                      className={iconInputCls}
+                    />
+                  </InputIcon>
+                  <p className="text-xs text-slate-400 mt-1">Aparece na barra lateral e no título da aba. Vazio = usa o nome interno ({org?.nome}).</p>
+                  <div className="flex items-center gap-3 mt-3">
+                    <button type="submit" disabled={savingMarca} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium transition">
+                      {savingMarca && <Loader2 size={14} className="animate-spin" />}
+                      {savingMarca ? 'Salvando...' : 'Salvar nome'}
+                    </button>
+                    {marcaSaved && <span className="text-emerald-600 text-sm font-medium">Salvo!</span>}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Logo</label>
+                  <div className="flex items-center gap-4">
+                    <div className="w-28 h-20 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden shrink-0">
+                      {org?.logo_url
+                        ? <img src={org.logo_url} alt="Logo" className="w-full h-full object-cover" />
+                        : <ImageIcon size={22} className="text-slate-300" />}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition cursor-pointer w-fit">
+                        {uploadingLogo ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                        {uploadingLogo ? 'Enviando...' : 'Enviar logo'}
+                        <input type="file" accept="image/*" onChange={handleLogoUpload} disabled={uploadingLogo} className="hidden" />
+                      </label>
+                      {org?.logo_url && (
+                        <button type="button" onClick={removeLogo} className="text-xs text-slate-400 hover:text-red-500 transition w-fit">Remover logo</button>
+                      )}
+                      <p className="text-xs text-slate-400">PNG ou JPG, fundo transparente de preferência.</p>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </div>
+
+            {/* Arquivamento automático */}
+            <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100">
+                <h2 className="text-slate-900 text-sm font-semibold">Arquivamento automático</h2>
+                <p className="text-slate-400 text-xs mt-0.5">Oculta da lista/pipeline leads parados há muito tempo (continuam contando no dashboard)</p>
+              </div>
+              <form onSubmit={saveArquivamento} className="px-6 py-5 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Arquivar leads sem atualização há</label>
+                  <div className="flex items-center gap-2">
+                    <InputIcon icon={CalendarClock}>
+                      <input
+                        type="number"
+                        min={0}
+                        value={orgAutoDias}
+                        onChange={e => setOrgAutoDias(e.target.value)}
+                        placeholder="Ex: 30"
+                        className="w-32 pl-10 pr-3 py-2.5 rounded-lg border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+                      />
+                    </InputIcon>
+                    <span className="text-slate-500 text-sm">dias</span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">Deixe vazio para desligar. Leads com status "Fechado" nunca são arquivados automaticamente.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button type="submit" disabled={savingArq} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium transition">
+                    {savingArq && <Loader2 size={14} className="animate-spin" />}
+                    {savingArq ? 'Salvando...' : 'Salvar'}
+                  </button>
+                  {arqSaved && <span className="text-emerald-600 text-sm font-medium">Salvo!</span>}
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* Modal: Novo status */}
@@ -417,14 +602,16 @@ export default function Configuracoes() {
             <form onSubmit={addStatus} className="px-6 py-5 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Nome do status *</label>
+                <InputIcon icon={Tag}>
                 <input
                   autoFocus
                   value={statusForm.label}
                   onChange={e => setStatusForm(f => ({ ...f, label: e.target.value }))}
                   placeholder="Ex: Negociação, Em proposta..."
                   required
-                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+                  className="w-full pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
                 />
+                </InputIcon>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Cor</label>

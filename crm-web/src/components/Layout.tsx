@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Users, CalendarCheck, Settings, LogOut, Menu, X } from 'lucide-react'
+import { LayoutDashboard, Users, CalendarCheck, Settings, LogOut, Menu, X, Archive } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useFollowUps } from '../contexts/FollowUpsContext'
+import { useBranding } from '../contexts/BrandingContext'
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/leads',     icon: Users,           label: 'Leads'      },
+  { to: '/arquivados', icon: Archive,        label: 'Arquivados' },
   { to: '/followups', icon: CalendarCheck,   label: 'Follow-ups' },
   { to: '/configuracoes', icon: Settings,    label: 'Configurações' },
 ]
@@ -14,6 +16,7 @@ const navItems = [
 export default function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
   const { pendingCount } = useFollowUps()
+  const { productName, company, appTitle, logoUrl } = useBranding()
   const [profile, setProfile] = useState<{ nome: string; email: string } | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -55,16 +58,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Logo / Branding */}
         <div className="px-3 pt-3 pb-2 border-b border-slate-100">
-          <div
-            className="relative w-full h-24 rounded-xl overflow-hidden bg-emerald-950"
-            style={{ backgroundImage: "url('/imagem.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
-          >
-            <div className="absolute inset-0 bg-gradient-to-tr from-emerald-950 via-emerald-900/85 to-emerald-700/50 rounded-xl" />
-            <div className="relative z-10 flex flex-col justify-end h-full px-3 pb-2.5">
-              <p className="text-white text-sm font-bold leading-tight tracking-tight">4U Connect</p>
-              <p className="text-emerald-300 text-[10px] font-medium">CRM</p>
+          {logoUrl ? (
+            <div className="w-full h-24 rounded-xl overflow-hidden bg-white border border-slate-100">
+              <img src={logoUrl} alt={company || productName} className="w-full h-full object-cover" />
             </div>
-          </div>
+          ) : (
+            <div className="relative w-full h-24 rounded-xl overflow-hidden bg-emerald-950">
+              <div className="absolute inset-0 bg-gradient-to-tr from-emerald-950 via-emerald-900/85 to-emerald-700/50 rounded-xl" />
+              <div className="relative z-10 flex flex-col justify-end h-full px-3 pb-2.5">
+                <p className="text-white text-sm font-bold leading-tight tracking-tight">{productName}</p>
+                {company && <p className="text-emerald-300 text-[10px] font-medium truncate">{company}</p>}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Nav */}
@@ -130,7 +136,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           >
             {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
-          <span className="text-slate-800 text-sm font-semibold">4U Connect CRM</span>
+          <span className="text-slate-800 text-sm font-semibold">{appTitle}</span>
         </div>
 
         {children}

@@ -1,7 +1,8 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { memo, useRef, useEffect, useCallback } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { GripVertical } from 'lucide-react'
 import LeadCard from './LeadCard'
 import type { LeadWithRelations } from '../../types'
@@ -13,7 +14,7 @@ interface PipelineColumnProps {
   sortable?: boolean
 }
 
-export default function PipelineColumn({ statusCfg, leads, sortable = false }: PipelineColumnProps) {
+function PipelineColumn({ statusCfg, leads, sortable = false }: PipelineColumnProps) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: statusCfg.value })
 
   const {
@@ -25,34 +26,35 @@ export default function PipelineColumn({ statusCfg, leads, sortable = false }: P
     isDragging,
   } = useSortable({ id: `col_${statusCfg.value}`, disabled: !sortable })
 
-  // Ref for the scrollable column body — used for the wheel handler below
+  // Ref do corpo rolável da coluna — é o scroll container do virtualizador e o droppable
   const bodyRef = useRef<HTMLDivElement | null>(null)
 
-  // Merge the DnD droppable ref with our bodyRef
   const setBodyRef = useCallback((node: HTMLDivElement | null) => {
     bodyRef.current = node
     if (!sortable) setDropRef(node)
   }, [sortable, setDropRef])
+
+  // Virtualização: só os cards visíveis são montados (escala para milhares de leads)
+  const virtualizer = useVirtualizer({
+    count: leads.length,
+    getScrollElement: () => bodyRef.current,
+    estimateSize: () => 152,
+    overscan: 6,
+    getItemKey: (index) => leads[index].id,
+  })
 
   useEffect(() => {
     const el = bodyRef.current
     if (!el) return
     const container = el
     function onWheel(e: WheelEvent) {
-      // Horizontal trackpad swipe — always let it reach the pipeline
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return
-
-      // Only take control when the column actually has overflow (scrollbar visible).
-      // If there's no overflow, let the event bubble so the pipeline scrolls horizontally.
       if (container.scrollHeight <= container.clientHeight) return
-
       e.preventDefault()
       e.stopPropagation()
-
       const goingDown = e.deltaY > 0
       const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 1
       const atTop = container.scrollTop <= 0
-
       if ((goingDown && !atBottom) || (!goingDown && !atTop)) {
         container.scrollTop += e.deltaY
       }
@@ -67,6 +69,8 @@ export default function PipelineColumn({ statusCfg, leads, sortable = false }: P
     opacity: isDragging ? 0.4 : 1,
     zIndex: isDragging ? 20 : undefined,
   } : {}
+
+  const virtualItems = virtualizer.getVirtualItems()
 
   return (
     <div
@@ -99,7 +103,7 @@ export default function PipelineColumn({ statusCfg, leads, sortable = false }: P
 
       <div
         ref={setBodyRef}
-        className={`flex-1 rounded-b-xl p-2 space-y-2 overflow-y-auto transition-colors min-h-[120px] ${
+        className={`flex-1 rounded-b-xl p-2 overflow-y-auto transition-colors min-h-[120px] ${
           !sortable && isOver ? 'bg-emerald-50 ring-2 ring-inset ring-emerald-300' : 'bg-slate-50'
         }`}
         style={{ maxHeight: 'calc(100vh - 220px)' }}
@@ -111,9 +115,29 @@ export default function PipelineColumn({ statusCfg, leads, sortable = false }: P
             </p>
           </div>
         ) : (
-          leads.map(lead => <LeadCard key={lead.id} lead={lead} disabled={sortable} />)
+          <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
+            {virtualItems.map(vi => (
+              <div
+                key={vi.key}
+                data-index={vi.index}
+                ref={virtualizer.measureElement}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${vi.start}px)`,
+                  paddingBottom: 8,
+                }}
+              >
+                <LeadCard lead={leads[vi.index]} disabled={sortable} />
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
   )
 }
+
+export default memo(PipelineColumn)

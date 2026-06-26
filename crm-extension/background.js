@@ -20,9 +20,18 @@ function blobToDataUri(blob) {
 
 var CRM_SESSION_KEY = 'crm_4u_session';
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+// Origens autorizadas a sincronizar a sessão (CRM real + dev). Bloqueia qualquer
+// outro site (ex.: *.vercel.app) de enviar SYNC_SESSION e limpar/forjar a sessão.
+var ALLOWED_SESSION_ORIGINS = ['http://localhost:5173', 'https://crm-4uconnect.vercel.app'];
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Ponte de sessão: o script do CRM envia a sessão do Supabase para cá
   if (msg && msg.type === 'SYNC_SESSION') {
+    var origin = sender && (sender.origin || (sender.url ? new URL(sender.url).origin : ''));
+    if (ALLOWED_SESSION_ORIGINS.indexOf(origin) === -1) {
+      sendResponse({ ok: false, error: 'origin_not_allowed' });
+      return true;
+    }
     if (msg.session && msg.session.access_token) {
       chrome.storage.local.set({ [CRM_SESSION_KEY]: msg.session }, function () {
         sendResponse({ ok: true });
