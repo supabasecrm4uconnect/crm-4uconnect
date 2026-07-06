@@ -65,7 +65,7 @@ function SortableStatusItem({ status, onToggle }: SortableStatusItemProps) {
 const labelCls = 'block text-sm font-medium text-slate-700 mb-1.5'
 
 export default function Leads() {
-  const { statuses: allStatuses, refresh: refreshStatuses, getConfig: getStatusConfig } = useStatuses()
+  const { statuses: allStatuses, refresh: refreshStatuses, getConfig: getStatusConfig, loading: loadingStatuses } = useStatuses()
   const [searchParams] = useSearchParams()
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(
     () => searchParams.get('lead')
@@ -98,6 +98,9 @@ export default function Leads() {
   // Pipeline organizer
   const [showColumnsMenu, setShowColumnsMenu] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const [filterTags, setFilterTags] = useState<string[]>([])
+  const [showTagsMenu, setShowTagsMenu] = useState(false)
+  const tagsMenuRef = useRef<HTMLDivElement>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -111,6 +114,21 @@ export default function Leads() {
     document.addEventListener('mousedown', handleOutside)
     return () => document.removeEventListener('mousedown', handleOutside)
   }, [showColumnsMenu])
+
+  useEffect(() => {
+    if (!showTagsMenu) return
+    function handleOutside(e: MouseEvent) {
+      if (tagsMenuRef.current && !tagsMenuRef.current.contains(e.target as Node)) {
+        setShowTagsMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [showTagsMenu])
+
+  function toggleFilterTag(tag: string) {
+    setFilterTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])
+  }
 
   async function toggleColumn(id: string, ativo: boolean) {
     await supabase.from('lead_statuses').update({ ativo }).eq('id', id)
@@ -173,6 +191,12 @@ export default function Leads() {
   // Lista e pipeline só mostram leads não arquivados (arquivados têm menu próprio)
   const visibleLeads = useMemo(() => leads.filter(l => !l.arquivado), [leads])
 
+  const allTags = useMemo(() => {
+    const set = new Set<string>()
+    leads.forEach(l => l.tags?.forEach(t => set.add(t)))
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [leads])
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
     return leads.filter(l => {
@@ -183,9 +207,10 @@ export default function Leads() {
       if (filterSegmento && l.segmento_id !== filterSegmento) return false
       if (filterDataDe && l.created_at.slice(0, 10) < filterDataDe) return false
       if (filterDataAte && l.created_at.slice(0, 10) > filterDataAte) return false
+      if (filterTags.length && !filterTags.some(t => l.tags?.includes(t))) return false
       return true
     })
-  }, [leads, search, filterStatus, filterOrigem, filterSegmento, filterDataDe, filterDataAte])
+  }, [leads, search, filterStatus, filterOrigem, filterSegmento, filterDataDe, filterDataAte, filterTags])
 
   function addTag(val: string) {
     const t = val.trim()
@@ -421,9 +446,43 @@ export default function Leads() {
                 />
               </InputIcon>
             </div>
-            {(search || filterStatus || filterOrigem || filterSegmento || filterDataDe || filterDataAte) && (
+            <div className="relative" ref={tagsMenuRef}>
               <button
-                onClick={() => { setSearch(''); setFilterStatus(''); setFilterOrigem(''); setFilterSegmento(''); setFilterDataDe(''); setFilterDataAte(''); setSelectedIds(new Set()) }}
+                onClick={() => setShowTagsMenu(v => !v)}
+                className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg border text-sm transition ${
+                  filterTags.length
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <Tags size={15} className={filterTags.length ? 'text-emerald-600' : 'text-slate-400'} />
+                {filterTags.length ? `Tags (${filterTags.length})` : 'Tags'}
+              </button>
+              {showTagsMenu && (
+                <div className="absolute left-0 top-full mt-1.5 w-56 max-h-72 overflow-y-auto bg-white rounded-xl border border-slate-100 shadow-lg z-30">
+                  {allTags.length === 0 ? (
+                    <p className="px-4 py-3 text-sm text-slate-400">Nenhuma tag cadastrada</p>
+                  ) : (
+                    <div className="py-1.5">
+                      {allTags.map(tag => (
+                        <label key={tag} className="flex items-center gap-2 px-3.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={filterTags.includes(tag)}
+                            onChange={() => toggleFilterTag(tag)}
+                            className="accent-emerald-500"
+                          />
+                          {tag}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            {(search || filterStatus || filterOrigem || filterSegmento || filterDataDe || filterDataAte || filterTags.length > 0) && (
+              <button
+                onClick={() => { setSearch(''); setFilterStatus(''); setFilterOrigem(''); setFilterSegmento(''); setFilterDataDe(''); setFilterDataAte(''); setFilterTags([]); setSelectedIds(new Set()) }}
                 className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-500 hover:bg-slate-50 transition"
               >
                 <X size={13} />
@@ -435,7 +494,7 @@ export default function Leads() {
 
         {/* Pipeline view */}
         {viewMode === 'pipeline' && (
-          loading ? (
+          (loading || loadingStatuses) ? (
             <div className="flex items-center justify-center py-32">
               <Loader2 size={24} className="text-slate-300 animate-spin" />
             </div>

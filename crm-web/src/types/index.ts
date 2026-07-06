@@ -104,3 +104,18 @@ export interface LeadNote {
   created_at: string
   profiles?: { nome: string } | null
 }
+
+export interface ExtensionLog {
+  id: string
+  user_id: string
+  nivel: 'ERROR' | 'WARN' | 'INFO'
+  modulo: string
+  acao: string
+  mensagem: string
+  erro_tecnico: string | null
+  contexto: Record<string, unknown> | null
+  versao_extensao: string | null
+  navegador: string | null
+  url: string | null
+  created_at: string
+}

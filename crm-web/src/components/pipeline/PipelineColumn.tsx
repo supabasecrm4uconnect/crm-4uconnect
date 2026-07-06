@@ -7,6 +7,7 @@ import { GripVertical } from 'lucide-react'
 import LeadCard from './LeadCard'
 import type { LeadWithRelations } from '../../types'
 import type { StatusConfig } from '../../contexts/StatusesContext'
+import { formatCurrency } from '../../lib/helpers'
 
 interface PipelineColumnProps {
   statusCfg: StatusConfig
@@ -72,6 +73,19 @@ function PipelineColumn({ statusCfg, leads, sortable = false }: PipelineColumnPr
 
   const virtualItems = virtualizer.getVirtualItems()
 
+  const { totalValor, comValor, semValor } = leads.reduce(
+    (acc, lead) => {
+      if (lead.valor != null) {
+        acc.totalValor += lead.valor
+        acc.comValor += 1
+      } else {
+        acc.semValor += 1
+      }
+      return acc
+    },
+    { totalValor: 0, comValor: 0, semValor: 0 }
+  )
+
   return (
     <div
       ref={sortable ? sortRef : undefined}
@@ -100,6 +114,15 @@ function PipelineColumn({ statusCfg, leads, sortable = false }: PipelineColumnPr
           {leads.length}
         </span>
       </div>
+
+      {leads.length > 0 && (
+        <div className="px-3.5 py-1.5 bg-white border-x border-b border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+          <span className="font-semibold text-slate-600 truncate">{formatCurrency(totalValor)}</span>
+          <span className="shrink-0 ml-2">
+            {comValor} com valor · {semValor} sem valor
+          </span>
+        </div>
+      )}
 
       <div
         ref={setBodyRef}

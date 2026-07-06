@@ -9,6 +9,29 @@ function buildTitle(company: string): string {
   return company ? `${PRODUCT_NAME} — ${company}` : PRODUCT_NAME
 }
 
+// Cache local do branding para a logo/empresa aparecerem instantaneamente no
+// reload (sem flash verde enquanto busca no banco).
+const BRANDING_CACHE_KEY = 'branding-cache'
+
+function readBrandingCache(): { company: string; logoUrl: string | null } | null {
+  try {
+    const raw = localStorage.getItem(BRANDING_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { company?: string; logoUrl?: string | null }
+    return { company: parsed.company ?? '', logoUrl: parsed.logoUrl ?? null }
+  } catch {
+    return null
+  }
+}
+
+function writeBrandingCache(company: string, logoUrl: string | null) {
+  try {
+    localStorage.setItem(BRANDING_CACHE_KEY, JSON.stringify({ company, logoUrl }))
+  } catch {
+    // localStorage indisponível (modo privado etc.) — ignora
+  }
+}
+
 interface Branding {
   productName: string      // "Connect CRM"
   company: string          // nome da empresa (Nome de exibição), '' se não houver
@@ -28,13 +51,17 @@ const BrandingContext = createContext<Branding>({
 })
 
 export function BrandingProvider({ children }: { children: React.ReactNode }) {
-  const [company, setCompany] = useState('')
-  const [logoUrl, setLogoUrl] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const cached = readBrandingCache()
+  const [company, setCompany] = useState(cached?.company ?? '')
+  const [logoUrl, setLogoUrl] = useState<string | null>(cached?.logoUrl ?? null)
+  // Se já temos cache, não estamos em estado de "carregando do zero" — evita o
+  // placeholder/flicker no primeiro render.
+  const [loading, setLoading] = useState(!cached)
 
   const apply = useCallback((comp: string, logo: string | null) => {
     setCompany(comp)
     setLogoUrl(logo)
+    writeBrandingCache(comp, logo)
     document.title = buildTitle(comp)
     setLoading(false)
   }, [])

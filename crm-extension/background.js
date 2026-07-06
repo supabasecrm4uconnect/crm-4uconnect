@@ -1,5 +1,8 @@
+importScripts('logger.js');
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[4U Connect CRM] Extensão instalada.')
+  if (typeof crmLogger !== 'undefined') crmLogger.init();
 })
 
 // Busca a foto de perfil no CDN do WhatsApp (pps.whatsapp.net) e converte para base64.

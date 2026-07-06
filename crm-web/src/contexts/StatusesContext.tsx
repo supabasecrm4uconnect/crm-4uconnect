@@ -35,12 +35,35 @@ const FALLBACK: StatusConfig = {
   ativo: true,
 }
 
+// Cache em localStorage por user ID — garante exibição instantânea no reload
+// sem depender de timing de eventos de autenticação.
+const STATUSES_CACHE_KEY_PREFIX = 'statuses-cache:'
+
+function readStatusesCache(userId: string): StatusConfig[] | null {
+  try {
+    const raw = localStorage.getItem(STATUSES_CACHE_KEY_PREFIX + userId)
+    if (!raw) return null
+    return JSON.parse(raw) as StatusConfig[]
+  } catch {
+    return null
+  }
+}
+
+function writeStatusesCache(userId: string, data: StatusConfig[]) {
+  try {
+    localStorage.setItem(STATUSES_CACHE_KEY_PREFIX + userId, JSON.stringify(data))
+  } catch {
+    // localStorage indisponível — ignora
+  }
+}
+
 interface StatusesContextType {
   statuses: StatusConfig[]
   activeStatuses: StatusConfig[]
   getConfig: (value: string) => StatusConfig
   refresh: () => Promise<void>
   updateOne: (id: string, patch: Partial<StatusConfig>) => void
+  loading: boolean
 }
 
 const StatusesContext = createContext<StatusesContextType>({
@@ -49,18 +72,55 @@ const StatusesContext = createContext<StatusesContextType>({
   getConfig: () => FALLBACK,
   refresh: async () => {},
   updateOne: () => {},
+  loading: true,
 })
 
 export function StatusesProvider({ children }: { children: React.ReactNode }) {
   const [statuses, setStatuses] = useState<StatusConfig[]>([])
+  const [loading, setLoading] = useState(true)
 
   async function load() {
     const { data } = await supabase.from('lead_statuses').select('*').order('ordem')
-    setStatuses((data as StatusConfig[]) ?? [])
+    const rows = (data as StatusConfig[]) ?? []
+    setStatuses(rows)
+    setLoading(false)
+
+    // Escreve no cache após carregar dados válidos, keyed pelo user ID atual.
+    if (rows.length > 0) {
+      supabase.auth.getUser().then(({ data: u }) => {
+        if (u.user) writeStatusesCache(u.user.id, rows)
+      })
+    }
   }
 
   useEffect(() => {
-    load()
+    // Usa getSession() como trigger primário: lê a sessão atual do localStorage de
+    // forma determinística. Não depende do timing do evento INITIAL_SESSION do
+    // onAuthStateChange, que pode disparar antes de o cliente ter a sessão pronta.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        // Já autenticado: inicializa a partir do cache (exibição instantânea) e
+        // dispara load() em paralelo para dados frescos do banco.
+        const cached = readStatusesCache(session.user.id)
+        if (cached) {
+          setStatuses(cached)
+          setLoading(false)
+        }
+        load()
+      }
+      // Sem sessão: onAuthStateChange vai lidar quando o SIGNED_IN chegar.
+    })
+
+    // Recarrega ao fazer login e ao renovar token. Filtramos pelo parâmetro
+    // `session` para não sobrescrever dados existentes em eventos de logout.
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) load()
+      else {
+        // Usuário deslogou: limpa o estado (não o cache — será sobrescrito no próximo login)
+        setStatuses([])
+        setLoading(false)
+      }
+    })
 
     const channel = supabase
       .channel('statuses-realtime')
@@ -69,7 +129,10 @@ export function StatusesProvider({ children }: { children: React.ReactNode }) {
       })
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      sub.subscription.unsubscribe()
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   const activeStatuses = statuses.filter(s => s.ativo)
@@ -83,7 +146,7 @@ export function StatusesProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <StatusesContext.Provider value={{ statuses, activeStatuses, getConfig, refresh: load, updateOne }}>
+    <StatusesContext.Provider value={{ statuses, activeStatuses, getConfig, refresh: load, updateOne, loading }}>
       {children}
     </StatusesContext.Provider>
   )

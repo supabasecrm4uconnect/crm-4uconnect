@@ -344,32 +344,38 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
             <div className="flex items-center gap-3 min-w-0">
               <LeadAvatar nome={lead.nome} foto_url={lead.foto_url} size="md" />
               <div className="min-w-0">
+                <h2 className="text-slate-900 text-base font-semibold truncate">{lead.nome}</h2>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-slate-900 text-base font-semibold truncate">{lead.nome}</h2>
+                  <p className="flex items-center gap-1.5 text-slate-500 text-sm">
+                    <WhatsAppIcon size={13} className="shrink-0 text-emerald-500" />
+                    {formatWhatsApp(lead.whatsapp)}
+                  </p>
                   <StatusBadge status={formStatus} />
                 </div>
-                <p className="text-slate-500 text-sm">{formatWhatsApp(lead.whatsapp)}</p>
               </div>
             </div>
           )}
           <div className="flex items-center gap-2 shrink-0 ml-3">
             {lead && (
               <>
-                <button
-                  onClick={handleToggleArquivar}
-                  disabled={archiving}
-                  className="p-2 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition disabled:opacity-50"
-                  title={lead.arquivado ? 'Desarquivar lead' : 'Arquivar lead'}
-                >
-                  {archiving ? <Loader2 size={18} className="animate-spin" /> : lead.arquivado ? <ArchiveRestore size={18} /> : <Archive size={18} />}
-                </button>
-                <button
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="p-2 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition"
-                  title="Excluir Lead"
-                >
-                  <Trash2 size={18} />
-                </button>
+                {/* Ações de gerenciamento agrupadas */}
+                <div className="flex items-center divide-x divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
+                  <button
+                    onClick={handleToggleArquivar}
+                    disabled={archiving}
+                    className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition disabled:opacity-50"
+                    title={lead.arquivado ? 'Desarquivar lead' : 'Arquivar lead'}
+                  >
+                    {archiving ? <Loader2 size={18} className="animate-spin" /> : lead.arquivado ? <ArchiveRestore size={18} /> : <Archive size={18} />}
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 transition"
+                    title="Excluir Lead"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
                 <a
                   href={whatsappLink(lead.whatsapp)}
                   target="_blank"

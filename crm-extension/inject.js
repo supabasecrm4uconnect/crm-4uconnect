@@ -132,12 +132,11 @@
               if (isUsablePhotoSrc(headerImgs[hi].src)) { photo = headerImgs[hi].src; break; }
             }
             if (!photo) {
-              console.log('[4U CRM][foto] Nenhuma fonte aceita. thumbObj presente:',
+              console.log('[Connect CRM][foto] Nenhuma fonte aceita. thumbObj presente:',
                 !!(c.profilePicThumbObj || c.__x_profilePicThumbObj),
                 '| imgs no header:', dbgSrcs.length ? dbgSrcs : '(nenhuma)');
             }
           }
-          if (photo) console.log('[4U CRM][foto] Fonte encontrada:', photo.slice(0, 60) + '...');
         } catch (photoErr) {}
 
         return { isGroup: false, phone: phone, name: name, photo: photo };

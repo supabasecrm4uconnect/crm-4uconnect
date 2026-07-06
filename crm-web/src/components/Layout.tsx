@@ -1,30 +1,30 @@
 import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Users, CalendarCheck, Settings, LogOut, Menu, X, Archive } from 'lucide-react'
+import { LayoutDashboard, Users, CalendarCheck, Settings, LogOut, Menu, X, Archive, Activity } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useFollowUps } from '../contexts/FollowUpsContext'
 import { useBranding } from '../contexts/BrandingContext'
 
 const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/leads',     icon: Users,           label: 'Leads'      },
-  { to: '/arquivados', icon: Archive,        label: 'Arquivados' },
-  { to: '/followups', icon: CalendarCheck,   label: 'Follow-ups' },
-  { to: '/configuracoes', icon: Settings,    label: 'Configurações' },
+  { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard'      },
+  { to: '/leads',         icon: Users,           label: 'Leads'          },
+  { to: '/arquivados',    icon: Archive,         label: 'Arquivados'     },
+  { to: '/followups',     icon: CalendarCheck,   label: 'Follow-ups'     },
+  { to: '/configuracoes', icon: Settings,        label: 'Configurações'  },
 ]
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
   const { pendingCount } = useFollowUps()
-  const { productName, company, appTitle, logoUrl } = useBranding()
-  const [profile, setProfile] = useState<{ nome: string; email: string } | null>(null)
+  const { productName, company, appTitle, logoUrl, loading: brandingLoading } = useBranding()
+  const [profile, setProfile] = useState<{ nome: string; email: string; is_admin: boolean } | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return
-      supabase.from('profiles').select('nome, email').eq('id', user.id).single()
-        .then(({ data }) => { if (data) setProfile(data as { nome: string; email: string }) })
+      supabase.from('profiles').select('nome, email, is_admin').eq('id', user.id).single()
+        .then(({ data }) => { if (data) setProfile(data as { nome: string; email: string; is_admin: boolean }) })
     })
   }, [])
 
@@ -62,6 +62,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <div className="w-full h-24 rounded-xl overflow-hidden bg-white border border-slate-100">
               <img src={logoUrl} alt={company || productName} className="w-full h-full object-cover" />
             </div>
+          ) : brandingLoading ? (
+            // Placeholder neutro enquanto o branding carrega — evita o flash verde
+            // antes de sabermos se a org tem logo.
+            <div className="w-full h-24 rounded-xl overflow-hidden bg-slate-50 border border-slate-100 animate-pulse" />
           ) : (
             <div className="relative w-full h-24 rounded-xl overflow-hidden bg-emerald-950">
               <div className="absolute inset-0 bg-gradient-to-tr from-emerald-950 via-emerald-900/85 to-emerald-700/50 rounded-xl" />
@@ -97,6 +101,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               )}
             </NavLink>
           ))}
+          {profile?.is_admin && (
+            <NavLink
+              to="/diagnostico"
+              onClick={() => setSidebarOpen(false)}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-emerald-50 text-emerald-600'
+                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                }`
+              }
+            >
+              <Activity size={17} />
+              <span className="flex-1">Diagnóstico</span>
+            </NavLink>
+          )}
         </nav>
 
         {/* Perfil + Logout */}
