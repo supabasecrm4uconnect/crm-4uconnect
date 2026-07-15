@@ -5,7 +5,7 @@
     { "path": "/api/keep-alive", "schedule": "0 12 * * *" }
   ],
   "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/((?!api/|privacidade\\.html).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
