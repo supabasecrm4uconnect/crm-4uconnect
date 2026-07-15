@@ -82,13 +82,13 @@ export default function Login() {
     setSuccessMsg('Conta criada! Verifique seu e-mail para confirmar o cadastro.')
   }
 
-  const inputBase = 'w-full h-10 pl-9 pr-3 rounded-xl border border-gray-200 bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors'
-  const inputWithEye = 'w-full h-10 pl-9 pr-10 rounded-xl border border-gray-200 bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors'
-  const iconCls = 'absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none'
+  const inputBase = 'w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors'
+  const inputWithEye = 'w-full h-10 pl-9 pr-10 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors'
+  const iconCls = 'absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none'
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-5xl bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex min-h-[580px]">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+      <div className="w-full max-w-5xl bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex min-h-[580px]">
 
         {/* Lado esquerdo — branding */}
         <div className="hidden md:flex md:w-1/2 bg-emerald-950 flex-col justify-end p-12 relative overflow-hidden">
@@ -118,8 +118,8 @@ export default function Login() {
 
             {mode === 'login' ? (
               <>
-                <h2 className="text-gray-900 text-2xl font-semibold tracking-tight mb-1.5">Entrar na conta</h2>
-                <p className="text-gray-500 text-sm mb-8">Digite suas credenciais para acessar o CRM.</p>
+                <h2 className="text-slate-900 text-2xl font-semibold tracking-tight mb-1.5">Entrar na conta</h2>
+                <p className="text-slate-500 text-sm mb-8">Digite suas credenciais para acessar o CRM.</p>
 
                 {successMsg && (
                   <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-3.5 py-2.5 mb-4">
@@ -129,7 +129,7 @@ export default function Login() {
 
                 <form onSubmit={handleLogin} className="space-y-3">
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-700">E-mail</label>
+                    <label className="text-sm font-medium text-slate-700">E-mail</label>
                     <div className="relative">
                       <Mail className={iconCls} size={15} />
                       <input
@@ -144,7 +144,7 @@ export default function Login() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-700">Senha</label>
+                    <label className="text-sm font-medium text-slate-700">Senha</label>
                     <div className="relative">
                       <Lock className={iconCls} size={15} />
                       <input
@@ -158,7 +158,7 @@ export default function Login() {
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                       >
                         {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                       </button>
@@ -181,7 +181,7 @@ export default function Login() {
                   </button>
                 </form>
 
-                <p className="text-center text-sm text-gray-500 mt-6">
+                <p className="text-center text-sm text-slate-500 mt-6">
                   Ainda não tem conta?{' '}
                   <button
                     type="button"
@@ -194,12 +194,12 @@ export default function Login() {
               </>
             ) : (
               <>
-                <h2 className="text-gray-900 text-2xl font-semibold tracking-tight mb-1.5">Criar conta</h2>
-                <p className="text-gray-500 text-sm mb-8">Preencha os dados para se cadastrar.</p>
+                <h2 className="text-slate-900 text-2xl font-semibold tracking-tight mb-1.5">Criar conta</h2>
+                <p className="text-slate-500 text-sm mb-8">Preencha os dados para se cadastrar.</p>
 
                 <form onSubmit={handleSignup} className="space-y-3">
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-700">Nome completo</label>
+                    <label className="text-sm font-medium text-slate-700">Nome completo</label>
                     <div className="relative">
                       <User className={iconCls} size={15} />
                       <input
@@ -214,7 +214,7 @@ export default function Login() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-700">E-mail</label>
+                    <label className="text-sm font-medium text-slate-700">E-mail</label>
                     <div className="relative">
                       <Mail className={iconCls} size={15} />
                       <input
@@ -229,7 +229,7 @@ export default function Login() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-700">Senha</label>
+                    <label className="text-sm font-medium text-slate-700">Senha</label>
                     <div className="relative">
                       <Lock className={iconCls} size={15} />
                       <input
@@ -243,7 +243,7 @@ export default function Login() {
                       <button
                         type="button"
                         onClick={() => setShowSignupPassword(!showSignupPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                       >
                         {showSignupPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                       </button>
@@ -251,7 +251,7 @@ export default function Login() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-700">Confirmar senha</label>
+                    <label className="text-sm font-medium text-slate-700">Confirmar senha</label>
                     <div className="relative">
                       <Lock className={iconCls} size={15} />
                       <input
@@ -265,7 +265,7 @@ export default function Login() {
                       <button
                         type="button"
                         onClick={() => setShowSignupConfirm(!showSignupConfirm)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                       >
                         {showSignupConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
                       </button>
@@ -288,7 +288,7 @@ export default function Login() {
                   </button>
                 </form>
 
-                <p className="text-center text-sm text-gray-500 mt-6">
+                <p className="text-center text-sm text-slate-500 mt-6">
                   Já tem conta?{' '}
                   <button
                     type="button"

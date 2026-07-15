@@ -5,6 +5,7 @@ import StatusBadge from '../components/StatusBadge'
 import LeadAvatar from '../components/LeadAvatar'
 import LeadDrawer from '../components/LeadDrawer'
 import WhatsAppIcon from '../components/WhatsAppIcon'
+import TableRowSkeleton from '../components/TableRowSkeleton'
 import { supabase } from '../lib/supabase'
 import { exportLeadsToXlsx } from '../lib/exportLeads'
 import { formatWhatsApp, whatsappLink, formatCurrency, formatDateTime } from '../lib/helpers'
@@ -51,7 +52,7 @@ export default function Arquivados() {
           <div>
             <h1 className="text-slate-900 text-xl font-semibold">Arquivados</h1>
             <p className="text-slate-500 text-sm mt-0.5">
-              {leads.length} lead{leads.length !== 1 ? 's' : ''} arquivado{leads.length !== 1 ? 's' : ''} — fora da lista e do pipeline, mas ainda contados no dashboard
+              {leads.length} {leads.length === 1 ? 'lead arquivado' : 'leads arquivados'} — fora da lista e do pipeline, mas {leads.length === 1 ? 'ainda contado' : 'ainda contados'} no dashboard
             </p>
           </div>
           {leads.length > 0 && (
@@ -67,9 +68,17 @@ export default function Arquivados() {
 
         <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 size={20} className="text-slate-300 animate-spin" />
-            </div>
+            <TableRowSkeleton
+              rows={6}
+              cols={[
+                { width: 'w-8', height: 'h-8', circle: true },
+                { width: 'w-36' },
+                { width: 'w-16' },
+                { width: 'w-20' },
+                { width: 'w-16' },
+                { width: 'w-20' },
+              ]}
+            />
           ) : leads.length === 0 ? (
             <div className="py-16 text-center">
               <Archive size={28} className="text-slate-200 mx-auto mb-3" />
@@ -77,7 +86,7 @@ export default function Arquivados() {
               <p className="text-slate-400 text-xs mt-1">Leads arquivados (manualmente ou por inatividade) aparecem aqui.</p>
             </div>
           ) : (
-            <table className="w-full">
+            <table className="w-full animate-fade-in">
               <thead>
                 <tr className="border-b border-slate-100">
                   <th className="text-left text-xs font-medium text-slate-500 px-5 py-3.5">Contato</th>

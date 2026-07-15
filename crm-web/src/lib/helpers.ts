@@ -1,6 +1,6 @@
-import type { ActivityType, ActivityStatus } from '../types'
+import type { ActivityType, ActivityStatus, LossReason } from '../types'
 
-export const activityTypeLabel: Record<ActivityType, string> = {
+const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
   ligar:              'Ligar',
   enviar_mensagem:    'Enviar mensagem',
   retornar_orcamento: 'Retornar orçamento',
@@ -10,15 +10,40 @@ export const activityTypeLabel: Record<ActivityType, string> = {
   pos_venda:          'Pós-venda',
 }
 
-export const allActivityTypes = Object.entries(activityTypeLabel).map(([value, label]) => ({
-  value: value as ActivityType,
-  label,
-}))
+export function activityTypeLabel(type: ActivityType): string {
+  return ACTIVITY_TYPE_LABELS[type]
+}
 
-export const activityStatusConfig: Record<ActivityStatus, { label: string; color: string; bg: string }> = {
+export function allActivityTypes(): { value: ActivityType; label: string }[] {
+  return (Object.keys(ACTIVITY_TYPE_LABELS) as ActivityType[]).map(value => ({ value, label: activityTypeLabel(value) }))
+}
+
+const ACTIVITY_STATUS_STYLE: Record<ActivityStatus, { label: string; color: string; bg: string }> = {
   pendente:  { label: 'Pendente',  color: 'text-amber-700',   bg: 'bg-amber-50'   },
   concluida: { label: 'Concluída', color: 'text-emerald-700', bg: 'bg-emerald-50' },
   atrasada:  { label: 'Atrasada',  color: 'text-red-600',     bg: 'bg-red-50'     },
+}
+
+export function activityStatusConfig(status: ActivityStatus): { label: string; color: string; bg: string } {
+  return ACTIVITY_STATUS_STYLE[status]
+}
+
+const LOSS_REASON_LABELS: Record<LossReason, string> = {
+  preco:            'Preço',
+  concorrencia:     'Concorrência',
+  sem_resposta:     'Não respondeu',
+  sem_orcamento:    'Sem orçamento',
+  timing:           'Não era o momento',
+  nao_qualificado:  'Não qualificado',
+  outro:            'Outro',
+}
+
+export function lossReasonLabel(reason: string): string {
+  return (LOSS_REASON_LABELS as Record<string, string>)[reason] ?? reason
+}
+
+export function allLossReasons(): { value: LossReason; label: string }[] {
+  return (Object.keys(LOSS_REASON_LABELS) as LossReason[]).map(value => ({ value, label: lossReasonLabel(value) }))
 }
 
 export function formatWhatsApp(number: string): string {
@@ -124,3 +149,15 @@ export function localDateStr(): string {
 export function isOverdue(dateStr: string): boolean {
   return dateStr < localDateStr()
 }
+
+/** Estados finais do funil — mesma convenção usada em vários pontos do app (Dashboard, automação do Pipeline) */
+export const TERMINAL_STATUSES: string[] = ['fechado', 'perdido']
+
+/** Data local (YYYY-MM-DD) daqui a `days` dias (aceita negativo) */
+export function addDaysLocal(days: number): string {
+  const n = new Date()
+  n.setDate(n.getDate() + days)
+  const pad = (x: number) => String(x).padStart(2, '0')
+  return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`
+}
+

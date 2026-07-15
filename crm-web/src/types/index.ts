@@ -11,6 +11,15 @@ export type ActivityType =
 
 export type ActivityStatus = 'pendente' | 'concluida' | 'atrasada'
 
+export type LossReason =
+  | 'preco'
+  | 'concorrencia'
+  | 'sem_resposta'
+  | 'sem_orcamento'
+  | 'timing'
+  | 'nao_qualificado'
+  | 'outro'
+
 export interface Profile {
   id: string
   nome: string
@@ -51,6 +60,7 @@ export interface Lead {
   proximo_followup: string | null
   arquivado: boolean
   arquivado_em: string | null
+  motivo_perda: string | null
   created_at: string
   updated_at: string
 }
@@ -60,7 +70,6 @@ export interface Organization {
   nome: string
   nome_exibicao: string | null
   logo_url: string | null
-  auto_arquivar_dias: number | null
   created_at: string
 }
 
@@ -89,6 +98,7 @@ export interface LeadActivity {
   hora_agendada: string
   status_atividade: ActivityStatus
   criado_por: string | null
+  criado_automaticamente: boolean
   concluido_em: string | null
   created_at: string
   updated_at: string

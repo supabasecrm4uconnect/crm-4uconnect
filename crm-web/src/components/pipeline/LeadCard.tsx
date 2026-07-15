@@ -35,9 +35,10 @@ function LeadCard({ lead, disabled = false }: LeadCardProps) {
     ? new Date(lead.proximo_followup!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
     : null
 
-  function handleClick(e: React.MouseEvent) {
-    // Só navega se não estava arrastando
-    if ((e.target as HTMLElement).closest('[data-drag-handle]')) return
+  function handleDoubleClick() {
+    // Um drag de verdade (com movimento) não gera evento nativo de dblclick,
+    // então não precisa excluir a área de arrastar aqui — só clique duplo
+    // parado (sem movimento) chega a disparar isso.
     navigate(`/leads?lead=${lead.id}`)
   }
 
@@ -51,7 +52,7 @@ function LeadCard({ lead, disabled = false }: LeadCardProps) {
         hover:shadow-md hover:border-slate-200
         ${isDragging ? 'shadow-xl ring-2 ring-emerald-400 ring-opacity-50' : ''}
       `}
-      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
     >
       {/* Drag handle — área de arrastar */}
       <div

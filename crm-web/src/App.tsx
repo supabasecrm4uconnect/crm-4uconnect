@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './components/ProtectedRoute'
+import { AuthProvider } from './contexts/AuthContext'
 import { StatusesProvider } from './contexts/StatusesContext'
 import { FollowUpsProvider } from './contexts/FollowUpsContext'
 import { BrandingProvider } from './contexts/BrandingContext'
@@ -36,6 +37,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <AuthProvider>
     <BrandingProvider>
     <StatusesProvider>
     <FollowUpsProvider>
@@ -55,5 +57,6 @@ export default function App() {
     </FollowUpsProvider>
     </StatusesProvider>
     </BrandingProvider>
+    </AuthProvider>
   )
 }

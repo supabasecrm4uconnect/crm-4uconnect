@@ -332,69 +332,67 @@ export default function Dashboard() {
             <div className="grid grid-cols-4 gap-4">{Array.from({ length: 4 }).map((_, i) => <div key={i}>{skeletonCard}</div>)}</div>
           </div>
         ) : (
-          <>
-            {/* Seção: Hoje */}
-            <div className="mb-6">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Hoje</p>
-              <div className="grid grid-cols-4 gap-4">
-                {cardsHoje.map(({ label, value, icon: Icon, color, bg, highlight, to }) => (
-                  <div
-                    key={label}
-                    onClick={() => to && navigate(to)}
-                    className={`bg-white rounded-xl border p-5 transition-shadow hover:shadow-md ${
-                      highlight ? 'border-red-200 shadow-sm' : 'border-slate-100'
-                    } ${to ? 'cursor-pointer' : ''}`}
-                  >
-                    <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center mb-4`}>
-                      <Icon size={16} className={color} />
+          <div className="animate-fade-in">
+            {/* Hoje + Pipeline num card só, ao lado de Valores — grid 2 colunas, mesma altura */}
+            <div className="grid grid-cols-3 gap-4 mb-6 items-stretch">
+              <div className="col-span-2 h-full bg-white rounded-xl border border-slate-100 p-5 flex flex-col justify-center">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Hoje</p>
+                <div className="grid grid-cols-4 gap-4 mb-4">
+                  {cardsHoje.map(({ label, value, icon: Icon, color, bg, highlight, to }) => (
+                    <div
+                      key={label}
+                      onClick={() => to && navigate(to)}
+                      className={`bg-white rounded-xl border p-5 transition-shadow hover:shadow-md ${
+                        highlight ? 'border-red-200 shadow-sm' : 'border-slate-100'
+                      } ${to ? 'cursor-pointer' : ''}`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center mb-4`}>
+                        <Icon size={16} className={color} />
+                      </div>
+                      <p className={`text-2xl font-semibold truncate ${highlight ? 'text-red-600' : 'text-slate-900'}`}>{value}</p>
+                      <p className="text-slate-500 text-sm mt-0.5 truncate">{label}</p>
                     </div>
-                    <p className={`text-2xl font-semibold ${highlight ? 'text-red-600' : 'text-slate-900'}`}>{value}</p>
-                    <p className="text-slate-500 text-sm mt-0.5">{label}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Seção: Pipeline */}
-            <div className="mb-6">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Pipeline</p>
-              <div className="grid grid-cols-4 gap-4">
-                {cardsPipeline.map(({ label, value, icon: Icon, color, bg, status }) => (
-                  <div
-                    key={label}
-                    onClick={() => navigate(`/leads?status=${status}`)}
-                    className="bg-white rounded-xl border border-slate-100 p-5 transition-shadow hover:shadow-md cursor-pointer group"
-                  >
-                    <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center mb-4`}>
-                      <Icon size={16} className={color} />
-                    </div>
-                    <p className="text-slate-900 text-2xl font-semibold">{value}</p>
-                    <div className="flex items-center justify-between mt-0.5">
-                      <p className="text-slate-500 text-sm">{label}</p>
-                      <ArrowRight size={12} className="text-slate-300 group-hover:text-slate-400 transition" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Valores */}
-            <div className="mb-6">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Valores {period !== 'todos' && '(no período)'}</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white rounded-xl border border-slate-100 p-5">
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center mb-4">
-                    <Wallet size={16} className="text-amber-600" />
-                  </div>
-                  <p className="text-slate-900 text-2xl font-semibold tabular-nums">{formatCurrency(stats.valor_negociacao) || 'R$ 0,00'}</p>
-                  <p className="text-slate-500 text-sm mt-0.5">Em negociação</p>
+                  ))}
                 </div>
-                <div className="bg-white rounded-xl border border-slate-100 p-5">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center mb-4">
-                    <DollarSign size={16} className="text-emerald-600" />
+
+                <div className="grid grid-cols-4 gap-4">
+                  {cardsPipeline.map(({ label, value, icon: Icon, color, bg, status }) => (
+                    <div
+                      key={label}
+                      onClick={() => navigate(`/leads?status=${status}`)}
+                      className="bg-white rounded-xl border border-slate-100 p-5 transition-shadow hover:shadow-md cursor-pointer group"
+                    >
+                      <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center mb-4`}>
+                        <Icon size={16} className={color} />
+                      </div>
+                      <p className="text-slate-900 text-2xl font-semibold truncate">{value}</p>
+                      <div className="flex items-center justify-between mt-0.5 gap-1">
+                        <p className="text-slate-500 text-sm truncate">{label}</p>
+                        <ArrowRight size={12} className="text-slate-300 group-hover:text-slate-400 transition shrink-0" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Valores */}
+              <div className="h-full bg-white rounded-xl border border-slate-100 p-5 flex flex-col justify-center">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Valores {period !== 'todos' && '(no período)'}</p>
+                <div className="space-y-4">
+                  <div className="bg-white rounded-xl border border-slate-100 p-5">
+                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center mb-4">
+                      <Wallet size={16} className="text-amber-600" />
+                    </div>
+                    <p className="text-slate-900 text-2xl font-semibold tabular-nums truncate">{formatCurrency(stats.valor_negociacao) || 'R$ 0,00'}</p>
+                    <p className="text-slate-500 text-sm mt-0.5 truncate">Em negociação</p>
                   </div>
-                  <p className="text-slate-900 text-2xl font-semibold tabular-nums">{formatCurrency(stats.valor_fechado) || 'R$ 0,00'}</p>
-                  <p className="text-slate-500 text-sm mt-0.5">Fechado</p>
+                  <div className="bg-white rounded-xl border border-slate-100 p-5">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center mb-4">
+                      <DollarSign size={16} className="text-emerald-600" />
+                    </div>
+                    <p className="text-slate-900 text-2xl font-semibold tabular-nums truncate">{formatCurrency(stats.valor_fechado) || 'R$ 0,00'}</p>
+                    <p className="text-slate-500 text-sm mt-0.5 truncate">Fechado</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -487,7 +485,7 @@ export default function Dashboard() {
 
               </div>
             )}
-          </>
+          </div>
         )}
 
         {/* Follow-ups de hoje */}

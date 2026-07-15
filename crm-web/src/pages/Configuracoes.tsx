@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Plus, Loader2, ToggleLeft, ToggleRight, X, Trash2, UserCog, GitBranch, Globe, Tag, Users, Building2, Upload, Image as ImageIcon, CalendarClock } from 'lucide-react'
+import { Plus, Loader2, ToggleLeft, ToggleRight, X, Trash2, UserCog, GitBranch, Globe, Tag, Users, Building2, Upload, Image as ImageIcon } from 'lucide-react'
 import { InputIcon, iconInputCls } from '../components/FieldIcon'
 import Layout from '../components/Layout'
+import ConfirmModal from '../components/ConfirmModal'
 import { supabase } from '../lib/supabase'
 import { useStatuses, COLOR_PRESETS, type StatusConfig } from '../contexts/StatusesContext'
 import { useBranding } from '../contexts/BrandingContext'
@@ -36,7 +37,9 @@ export default function Configuracoes() {
   const [savingSegment,  setSavingSegment]  = useState(false)
 
   const [confirmDeleteSource,  setConfirmDeleteSource]  = useState<string | null>(null)
+  const [deletingSource,       setDeletingSource]       = useState(false)
   const [confirmDeleteSegment, setConfirmDeleteSegment] = useState<string | null>(null)
+  const [deletingSegment,      setDeletingSegment]      = useState(false)
 
   // Status
   const [showStatusModal, setShowStatusModal] = useState(false)
@@ -44,17 +47,19 @@ export default function Configuracoes() {
   const [savingStatus,    setSavingStatus]    = useState(false)
   const [editingStatus,   setEditingStatus]   = useState<StatusConfig | null>(null)
   const [editLabel,       setEditLabel]       = useState('')
+  const [confirmDeleteStatus, setConfirmDeleteStatus] = useState<StatusConfig | null>(null)
+  const [deletingStatus,      setDeletingStatus]      = useState(false)
+  const [statusDeleteError,   setStatusDeleteError]   = useState<string | null>(null)
 
   // Empresa / Marca
   const [org,            setOrg]            = useState<Organization | null>(null)
   const [orgNome,        setOrgNome]        = useState('')
-  const [orgAutoDias,    setOrgAutoDias]    = useState('')
   const [savingMarca,    setSavingMarca]    = useState(false)
   const [marcaSaved,     setMarcaSaved]     = useState(false)
-  const [savingArq,      setSavingArq]      = useState(false)
-  const [arqSaved,       setArqSaved]       = useState(false)
   const [uploadingLogo,  setUploadingLogo]  = useState(false)
   const [orgError,       setOrgError]       = useState('')
+  const [confirmRemoveLogo, setConfirmRemoveLogo] = useState(false)
+  const [removingLogo,      setRemovingLogo]      = useState(false)
 
   useEffect(() => { loadAll() }, [])
 
@@ -78,13 +83,12 @@ export default function Configuracoes() {
       if (mp.organization_id) {
         const { data: orgData } = await supabase
           .from('organizations')
-          .select('id, nome, nome_exibicao, logo_url, auto_arquivar_dias, created_at')
+          .select('id, nome, nome_exibicao, logo_url, created_at')
           .eq('id', mp.organization_id).single()
         if (orgData) {
           const o = orgData as Organization
           setOrg(o)
           setOrgNome(o.nome_exibicao ?? '')
-          setOrgAutoDias(o.auto_arquivar_dias != null ? String(o.auto_arquivar_dias) : '')
         }
       }
     }
@@ -108,22 +112,6 @@ export default function Configuracoes() {
     setTimeout(() => setMarcaSaved(false), 2500)
   }
 
-  async function saveArquivamento(e: React.FormEvent) {
-    e.preventDefault()
-    if (!myOrgId) return
-    setSavingArq(true)
-    setArqSaved(false)
-    setOrgError('')
-    const dias = orgAutoDias.trim() === '' ? null : Math.max(0, parseInt(orgAutoDias, 10) || 0)
-    const { error } = await supabase.from('organizations').update({
-      auto_arquivar_dias: dias,
-    }).eq('id', myOrgId)
-    setSavingArq(false)
-    if (error) { setOrgError('Não foi possível salvar o arquivamento. Tente novamente.'); return }
-    setArqSaved(true)
-    setTimeout(() => setArqSaved(false), 2500)
-  }
-
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !myOrgId) return
@@ -144,11 +132,14 @@ export default function Configuracoes() {
 
   async function removeLogo() {
     if (!myOrgId) return
+    setRemovingLogo(true)
     setOrgError('')
     const { error } = await supabase.from('organizations').update({ logo_url: null }).eq('id', myOrgId)
+    setRemovingLogo(false)
     if (error) { setOrgError('Não foi possível remover o logo.'); return }
     setOrg(prev => prev ? { ...prev, logo_url: null } : prev)
     await refreshBranding()
+    setConfirmRemoveLogo(false)
   }
 
   // --- Sources ---
@@ -168,7 +159,9 @@ export default function Configuracoes() {
   }
 
   async function deleteSource(id: string) {
+    setDeletingSource(true)
     await supabase.from('lead_sources').delete().eq('id', id)
+    setDeletingSource(false)
     setConfirmDeleteSource(null)
     loadAll()
   }
@@ -190,7 +183,9 @@ export default function Configuracoes() {
   }
 
   async function deleteSegment(id: string) {
+    setDeletingSegment(true)
     await supabase.from('lead_segments').delete().eq('id', id)
+    setDeletingSegment(false)
     setConfirmDeleteSegment(null)
     loadAll()
   }
@@ -231,6 +226,24 @@ export default function Configuracoes() {
     setEditingStatus(null)
   }
 
+  async function deleteStatus(status: StatusConfig) {
+    setDeletingStatus(true)
+    setStatusDeleteError(null)
+    const { count } = await supabase
+      .from('leads')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', status.value)
+    if (count && count > 0) {
+      setDeletingStatus(false)
+      setStatusDeleteError(`Não é possível excluir: ${count} lead${count > 1 ? 's estão' : ' está'} neste status. Mova ${count > 1 ? 'os leads' : 'o lead'} para outro status antes de excluir.`)
+      return
+    }
+    await supabase.from('lead_statuses').delete().eq('id', status.id)
+    await refreshStatuses()
+    setDeletingStatus(false)
+    setConfirmDeleteStatus(null)
+  }
+
   // --- Users ---
   async function toggleProfileStatus(id: string, status: string) {
     const newStatus = status === 'ativo' ? 'inativo' : 'ativo'
@@ -241,8 +254,31 @@ export default function Configuracoes() {
   if (loading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center flex-1">
-          <Loader2 size={20} className="text-slate-300 animate-spin" />
+        <div className="px-8 py-8 max-w-3xl">
+          <div className="mb-6">
+            <h1 className="text-slate-900 text-xl font-semibold">Configurações</h1>
+            <p className="text-slate-500 text-sm mt-0.5">Gerencie origens, segmentos, status do pipeline e usuários</p>
+          </div>
+          <div className="flex gap-1 bg-slate-100 p-1 rounded-xl mb-6 animate-pulse">
+            {TABS.map(({ id }) => <div key={id} className="flex-1 h-9 rounded-lg" />)}
+          </div>
+          <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 animate-pulse">
+              <div className="h-4 w-40 bg-slate-100 rounded mb-2" />
+              <div className="h-3 w-64 bg-slate-100 rounded" />
+            </div>
+            <div className="px-6 py-4 space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between py-1 animate-pulse">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-slate-100" />
+                    <div className="h-3.5 w-32 bg-slate-100 rounded" />
+                  </div>
+                  <div className="h-5 w-9 bg-slate-100 rounded-full" />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </Layout>
     )
@@ -250,7 +286,7 @@ export default function Configuracoes() {
 
   return (
     <Layout>
-      <div className="px-8 py-8 max-w-3xl">
+      <div className="px-8 py-8 max-w-3xl animate-fade-in">
 
         {/* Header */}
         <div className="mb-6">
@@ -313,13 +349,22 @@ export default function Configuracoes() {
                       )}
                       <span className="text-xs text-slate-400 font-mono hidden sm:block">{s.value}</span>
                     </div>
-                    <button
-                      onClick={() => toggleStatus(s.id, s.ativo)}
-                      className={`transition ml-3 shrink-0 ${s.ativo ? 'text-emerald-500 hover:text-emerald-600' : 'text-slate-300 hover:text-slate-400'}`}
-                      title={s.ativo ? 'Desativar coluna' : 'Ativar coluna'}
-                    >
-                      {s.ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
-                    </button>
+                    <div className="flex items-center gap-1 ml-3 shrink-0">
+                      <button
+                        onClick={() => toggleStatus(s.id, s.ativo)}
+                        className={`transition ${s.ativo ? 'text-emerald-500 hover:text-emerald-600' : 'text-slate-300 hover:text-slate-400'}`}
+                        title={s.ativo ? 'Desativar coluna' : 'Ativar coluna'}
+                      >
+                        {s.ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+                      </button>
+                      <button
+                        onClick={() => { setStatusDeleteError(null); setConfirmDeleteStatus(s) }}
+                        className="p-1 text-slate-300 hover:text-red-500 transition rounded"
+                        title="Excluir status"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -344,28 +389,16 @@ export default function Configuracoes() {
               <div className="space-y-1 mb-4">
                 {sources.length === 0 && <p className="text-slate-400 text-sm">Nenhuma origem cadastrada.</p>}
                 {sources.map(s => (
-                  <div key={s.id} className="border-b border-slate-50 last:border-0">
-                    {confirmDeleteSource === s.id ? (
-                      <div className="flex items-center justify-between py-2.5 bg-red-50 -mx-1 px-1 rounded-lg">
-                        <p className="text-red-700 text-sm">Excluir <strong>{s.nome}</strong>?</p>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => setConfirmDeleteSource(null)} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 rounded hover:bg-slate-100 transition">Cancelar</button>
-                          <button onClick={() => deleteSource(s.id)} className="text-xs text-white bg-red-500 hover:bg-red-600 px-3 py-1 rounded-lg transition font-medium">Excluir</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between py-2.5">
-                        <span className={`text-sm ${s.ativo ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{s.nome}</span>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => toggleSource(s.id, s.ativo)} className={`transition ${s.ativo ? 'text-emerald-500 hover:text-emerald-600' : 'text-slate-300 hover:text-slate-400'}`} title={s.ativo ? 'Desativar' : 'Ativar'}>
-                            {s.ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
-                          </button>
-                          <button onClick={() => setConfirmDeleteSource(s.id)} className="p-1 text-slate-300 hover:text-red-500 transition rounded" title="Excluir origem">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                  <div key={s.id} className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
+                    <span className={`text-sm ${s.ativo ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{s.nome}</span>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => toggleSource(s.id, s.ativo)} className={`transition ${s.ativo ? 'text-emerald-500 hover:text-emerald-600' : 'text-slate-300 hover:text-slate-400'}`} title={s.ativo ? 'Desativar' : 'Ativar'}>
+                        {s.ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+                      </button>
+                      <button onClick={() => setConfirmDeleteSource(s.id)} className="p-1 text-slate-300 hover:text-red-500 transition rounded" title="Excluir origem">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -393,28 +426,16 @@ export default function Configuracoes() {
               <div className="space-y-1 mb-4">
                 {segments.length === 0 && <p className="text-slate-400 text-sm">Nenhum segmento cadastrado.</p>}
                 {segments.map(s => (
-                  <div key={s.id} className="border-b border-slate-50 last:border-0">
-                    {confirmDeleteSegment === s.id ? (
-                      <div className="flex items-center justify-between py-2.5 bg-red-50 -mx-1 px-1 rounded-lg">
-                        <p className="text-red-700 text-sm">Excluir <strong>{s.nome}</strong>?</p>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => setConfirmDeleteSegment(null)} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 rounded hover:bg-slate-100 transition">Cancelar</button>
-                          <button onClick={() => deleteSegment(s.id)} className="text-xs text-white bg-red-500 hover:bg-red-600 px-3 py-1 rounded-lg transition font-medium">Excluir</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between py-2.5">
-                        <span className={`text-sm ${s.ativo ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{s.nome}</span>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => toggleSegment(s.id, s.ativo)} className={`transition ${s.ativo ? 'text-emerald-500 hover:text-emerald-600' : 'text-slate-300 hover:text-slate-400'}`} title={s.ativo ? 'Desativar' : 'Ativar'}>
-                            {s.ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
-                          </button>
-                          <button onClick={() => setConfirmDeleteSegment(s.id)} className="p-1 text-slate-300 hover:text-red-500 transition rounded" title="Excluir segmento">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                  <div key={s.id} className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
+                    <span className={`text-sm ${s.ativo ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{s.nome}</span>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => toggleSegment(s.id, s.ativo)} className={`transition ${s.ativo ? 'text-emerald-500 hover:text-emerald-600' : 'text-slate-300 hover:text-slate-400'}`} title={s.ativo ? 'Desativar' : 'Ativar'}>
+                        {s.ativo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+                      </button>
+                      <button onClick={() => setConfirmDeleteSegment(s.id)} className="p-1 text-slate-300 hover:text-red-500 transition rounded" title="Excluir segmento">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -544,45 +565,11 @@ export default function Configuracoes() {
                         <input type="file" accept="image/*" onChange={handleLogoUpload} disabled={uploadingLogo} className="hidden" />
                       </label>
                       {org?.logo_url && (
-                        <button type="button" onClick={removeLogo} className="text-xs text-slate-400 hover:text-red-500 transition w-fit">Remover logo</button>
+                        <button type="button" onClick={() => setConfirmRemoveLogo(true)} className="text-xs text-slate-400 hover:text-red-500 transition w-fit">Remover logo</button>
                       )}
                       <p className="text-xs text-slate-400">PNG ou JPG, fundo transparente de preferência.</p>
                     </div>
                   </div>
-                </div>
-              </form>
-            </div>
-
-            {/* Arquivamento automático */}
-            <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100">
-                <h2 className="text-slate-900 text-sm font-semibold">Arquivamento automático</h2>
-                <p className="text-slate-400 text-xs mt-0.5">Oculta da lista/pipeline leads parados há muito tempo (continuam contando no dashboard)</p>
-              </div>
-              <form onSubmit={saveArquivamento} className="px-6 py-5 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Arquivar leads sem atualização há</label>
-                  <div className="flex items-center gap-2">
-                    <InputIcon icon={CalendarClock}>
-                      <input
-                        type="number"
-                        min={0}
-                        value={orgAutoDias}
-                        onChange={e => setOrgAutoDias(e.target.value)}
-                        placeholder="Ex: 30"
-                        className="w-32 pl-10 pr-3 py-2.5 rounded-lg border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-                      />
-                    </InputIcon>
-                    <span className="text-slate-500 text-sm">dias</span>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1">Deixe vazio para desligar. Leads com status "Fechado" nunca são arquivados automaticamente.</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button type="submit" disabled={savingArq} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium transition">
-                    {savingArq && <Loader2 size={14} className="animate-spin" />}
-                    {savingArq ? 'Salvando...' : 'Salvar'}
-                  </button>
-                  {arqSaved && <span className="text-emerald-600 text-sm font-medium">Salvo!</span>}
                 </div>
               </form>
             </div>
@@ -647,6 +634,53 @@ export default function Configuracoes() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Modal: Excluir status */}
+      {confirmDeleteStatus && (
+        <ConfirmModal
+          title="Excluir status"
+          description={<>Tem certeza que deseja excluir <span className="font-medium text-slate-700">{confirmDeleteStatus.label}</span>? Esta ação não pode ser desfeita.</>}
+          error={statusDeleteError}
+          loading={deletingStatus}
+          onCancel={() => { setConfirmDeleteStatus(null); setStatusDeleteError(null) }}
+          onConfirm={() => deleteStatus(confirmDeleteStatus)}
+        />
+      )}
+
+      {/* Modal: Excluir origem */}
+      {confirmDeleteSource && (
+        <ConfirmModal
+          title="Excluir origem"
+          description={<>Tem certeza que deseja excluir <span className="font-medium text-slate-700">{sources.find(s => s.id === confirmDeleteSource)?.nome}</span>? Esta ação não pode ser desfeita.</>}
+          loading={deletingSource}
+          onCancel={() => setConfirmDeleteSource(null)}
+          onConfirm={() => deleteSource(confirmDeleteSource)}
+        />
+      )}
+
+      {/* Modal: Excluir segmento */}
+      {confirmDeleteSegment && (
+        <ConfirmModal
+          title="Excluir segmento"
+          description={<>Tem certeza que deseja excluir <span className="font-medium text-slate-700">{segments.find(s => s.id === confirmDeleteSegment)?.nome}</span>? Esta ação não pode ser desfeita.</>}
+          loading={deletingSegment}
+          onCancel={() => setConfirmDeleteSegment(null)}
+          onConfirm={() => deleteSegment(confirmDeleteSegment)}
+        />
+      )}
+
+      {/* Modal: Remover logo */}
+      {confirmRemoveLogo && (
+        <ConfirmModal
+          title="Remover logo"
+          description="Tem certeza que deseja remover o logo da empresa?"
+          confirmLabel="Remover"
+          confirmingLabel="Removendo..."
+          loading={removingLogo}
+          onCancel={() => setConfirmRemoveLogo(false)}
+          onConfirm={removeLogo}
+        />
       )}
     </Layout>
   )

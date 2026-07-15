@@ -2,6 +2,25 @@
 
 @theme {
   --shadow-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+
+  /*
+   * Token de marca — hoje mapeado 1:1 pro emerald padrão do Tailwind (nenhuma
+   * mudança visual), mas centraliza a cor principal do produto num só lugar.
+   * Trocar a marca no futuro = editar só estes valores, sem precisar caçar
+   * `emerald-*` pelo app inteiro. Usar `brand-*` em código novo daqui pra frente;
+   * os `emerald-*` já existentes continuam funcionando normalmente.
+   */
+  --color-brand-50: #ecfdf5;
+  --color-brand-100: #d1fae5;
+  --color-brand-200: #a7f3d0;
+  --color-brand-300: #6ee7b7;
+  --color-brand-400: #34d399;
+  --color-brand-500: #10b981;
+  --color-brand-600: #059669;
+  --color-brand-700: #047857;
+  --color-brand-800: #065f46;
+  --color-brand-900: #064e3b;
+  --color-brand-950: #022c22;
 }
 
 * {
@@ -20,4 +39,12 @@ body {
 }
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fade-in 0.35s ease-out;
 }

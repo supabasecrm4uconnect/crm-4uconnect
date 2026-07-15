@@ -10,10 +10,11 @@ import StatusBadge from './StatusBadge'
 import LeadAvatar from './LeadAvatar'
 import { supabase } from '../lib/supabase'
 import {
-  allActivityTypes, activityTypeLabel, activityStatusConfig,
+  allActivityTypes, activityTypeLabel, activityStatusConfig, allLossReasons,
   formatWhatsApp, formatDateTime, formatDate,
   whatsappLink, isOverdue, parseCurrency,
 } from '../lib/helpers'
+import { recalcProximoFollowup } from '../lib/leadFollowup'
 import { useStatuses } from '../contexts/StatusesContext'
 import type {
   LeadWithRelations, LeadSource, LeadSegment,
@@ -55,6 +56,8 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
   const [formValor, setFormValor] = useState('')
   const [formResponsavelId, setFormResponsavelId] = useState('')
   const [formProximoFollowup, setFormProximoFollowup] = useState('')
+  const [formMotivoPerda, setFormMotivoPerda] = useState('')
+  const [formMotivoPerdaOutro, setFormMotivoPerdaOutro] = useState('')
   const [tagInput, setTagInput] = useState('')
   const [archiving, setArchiving] = useState(false)
 
@@ -107,6 +110,17 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
         setFormProximoFollowup(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
       } else {
         setFormProximoFollowup('')
+      }
+      const knownReasons = allLossReasons().map(r => r.value).filter(v => v !== 'outro')
+      if (l.motivo_perda && (knownReasons as string[]).includes(l.motivo_perda)) {
+        setFormMotivoPerda(l.motivo_perda)
+        setFormMotivoPerdaOutro('')
+      } else if (l.motivo_perda) {
+        setFormMotivoPerda('outro')
+        setFormMotivoPerdaOutro(l.motivo_perda)
+      } else {
+        setFormMotivoPerda('')
+        setFormMotivoPerdaOutro('')
       }
     }
   }, [])
@@ -173,6 +187,10 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
     const finalTags = pending && !formTags.includes(pending) ? [...formTags, pending] : formTags
     if (pending) { setFormTags(finalTags); setTagInput('') }
 
+    const motivoPerda = formStatus !== 'perdido'
+      ? null
+      : (formMotivoPerda === 'outro' ? formMotivoPerdaOutro.trim() || null : formMotivoPerda || null)
+
     const { error: updateError } = await supabase.from('leads').update({
       status: formStatus,
       origem_id: formOrigemId || null,
@@ -182,6 +200,7 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
       valor: parseCurrency(formValor),
       responsavel_id: formResponsavelId || user?.id || null,
       proximo_followup: formProximoFollowup ? `${formProximoFollowup}T12:00:00.000Z` : null,
+      motivo_perda: motivoPerda,
     }).eq('id', lead.id)
 
     if (updateError) { setError('Erro ao salvar.'); setSaving(false); return }
@@ -247,6 +266,8 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
       status_atividade: 'concluida',
       concluido_em: new Date().toISOString(),
     }).eq('id', activityId)
+    const proximo = await recalcProximoFollowup(leadId)
+    setFormProximoFollowup(proximo ? proximo.slice(0, 10) : '')
     await loadActivities(leadId)
   }
 
@@ -268,11 +289,8 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
     })
     if (actErr) { setSavingActivity(false); setError('Erro ao agendar a atividade.'); return }
 
-    const proximo = `${activityForm.data}T12:00:00.000Z`
-    if (!lead.proximo_followup || proximo < lead.proximo_followup) {
-      await supabase.from('leads').update({ proximo_followup: proximo }).eq('id', lead.id)
-      setFormProximoFollowup(activityForm.data)
-    }
+    const proximo = await recalcProximoFollowup(lead.id)
+    setFormProximoFollowup(proximo ? proximo.slice(0, 10) : '')
 
     setSavingActivity(false)
     setShowActivityModal(false)
@@ -445,6 +463,29 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
                         {lead.profiles?.nome ?? '—'}
                       </div>
                     </div>
+                    {formStatus === 'perdido' && (
+                      <div className="col-span-2 bg-red-50/50 border border-red-100 rounded-lg p-3.5 space-y-2.5">
+                        <div>
+                          <label className={labelCls}>Motivo da perda</label>
+                          <select
+                            value={formMotivoPerda}
+                            onChange={e => setFormMotivoPerda(e.target.value)}
+                            className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+                          >
+                            <option value="">Selecionar motivo</option>
+                            {allLossReasons().map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                          </select>
+                        </div>
+                        {formMotivoPerda === 'outro' && (
+                          <input
+                            value={formMotivoPerdaOutro}
+                            onChange={e => setFormMotivoPerdaOutro(e.target.value)}
+                            placeholder="Descreva o motivo..."
+                            className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+                          />
+                        )}
+                      </div>
+                    )}
                     <div>
                       <label className={labelCls}>Origem</label>
                       <InputIcon icon={Globe}>
@@ -544,12 +585,12 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
                       {activities.map(act => {
                         const overdue = act.status_atividade === 'pendente' && isOverdue(act.data_agendada)
                         const effectiveStatus = overdue ? 'atrasada' : act.status_atividade
-                        const cfg = activityStatusConfig[effectiveStatus]
+                        const cfg = activityStatusConfig(effectiveStatus)
                         return (
                           <div key={act.id} className="bg-slate-50 border border-slate-100 rounded-xl px-5 py-4 flex items-center justify-between">
                             <div>
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="text-slate-900 text-sm font-medium">{activityTypeLabel[act.tipo_atividade]}</span>
+                                <span className="text-slate-900 text-sm font-medium">{activityTypeLabel(act.tipo_atividade)}</span>
                                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color} ${cfg.bg}`}>{cfg.label}</span>
                               </div>
                               {act.descricao && <p className="text-slate-500 text-xs mb-1">{act.descricao}</p>}
@@ -713,7 +754,7 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
                 <label className={labelCls}>Tipo de atividade</label>
                 <InputIcon icon={ListChecks}>
                   <select value={activityForm.tipo} onChange={e => setActivityForm(f => ({ ...f, tipo: e.target.value as ActivityType }))} className={iconSelectCls}>
-                    {allActivityTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    {allActivityTypes().map(at => <option key={at.value} value={at.value}>{at.label}</option>)}
                   </select>
                 </InputIcon>
               </div>

@@ -10,6 +10,10 @@ export interface StatusConfig {
   color_dot: string
   ordem: number
   ativo: boolean
+  auto_task_enabled: boolean | null
+  auto_task_tipo: string | null
+  auto_task_dias: number | null
+  auto_task_descricao: string | null
 }
 
 export const COLOR_PRESETS = [
@@ -33,6 +37,10 @@ const FALLBACK: StatusConfig = {
   color_dot: '#94a3b8',
   ordem: 99,
   ativo: true,
+  auto_task_enabled: false,
+  auto_task_tipo: null,
+  auto_task_dias: null,
+  auto_task_descricao: null,
 }
 
 // Cache em localStorage por user ID — garante exibição instantânea no reload

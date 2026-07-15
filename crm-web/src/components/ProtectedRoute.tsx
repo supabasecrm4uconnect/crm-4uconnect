@@ -1,35 +1,13 @@
-import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Clock, LogOut } from 'lucide-react'
-import type { Session } from '@supabase/supabase-js'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null | undefined>(undefined)
-  const [active, setActive] = useState<boolean | undefined>(undefined)
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, s) => setSession(s))
-    return () => subscription.unsubscribe()
-  }, [])
-
-  // Verifica se a conta foi liberada pelo administrador
-  useEffect(() => {
-    if (session === undefined) return
-    if (!session) { setActive(undefined); return }
-
-    let cancelled = false
-    supabase.from('profiles').select('status').eq('id', session.user.id).single()
-      .then(({ data }) => {
-        if (!cancelled) setActive((data?.status ?? 'inativo') === 'ativo')
-      })
-    return () => { cancelled = true }
-  }, [session])
+  const { session, profileStatus } = useAuth()
 
   // Carregando sessão ou status
-  if (session === undefined || (session && active === undefined)) {
+  if (session === undefined || (session && profileStatus === undefined)) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
@@ -40,7 +18,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   if (!session) return <Navigate to="/login" replace />
 
   // Conta criada mas ainda não liberada pelo administrador
-  if (!active) {
+  if (profileStatus !== 'ativo') {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
         <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 text-center">
@@ -49,8 +27,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
           </div>
           <h1 className="text-slate-900 text-lg font-semibold mb-2">Conta aguardando liberação</h1>
           <p className="text-slate-500 text-sm leading-relaxed mb-6">
-            Seu cadastro foi criado com sucesso. O acesso ao CRM precisa ser liberado
-            pelo administrador. Assim que isso acontecer, é só entrar novamente.
+            Seu cadastro foi criado com sucesso. O acesso ao CRM precisa ser liberado pelo administrador. Assim que isso acontecer, é só entrar novamente.
           </p>
           <button
             onClick={() => supabase.auth.signOut()}

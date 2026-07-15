@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, ChevronRight, Loader2, X, LayoutList, Kanban, CalendarDays, SlidersHorizontal, GripVertical, Eye, Download, Upload, User, Phone, Flag, Globe, Tag, Tags, DollarSign, FileText } from 'lucide-react'
+import { Plus, Search, ChevronRight, ChevronDown, Loader2, X, LayoutList, Kanban, CalendarDays, SlidersHorizontal, GripVertical, Eye, Download, Upload, User, Phone, Flag, Globe, Tag, Tags, DollarSign, FileText } from 'lucide-react'
 import {
   DndContext, PointerSensor, useSensor, useSensors, closestCenter,
   type DragEndEvent,
@@ -14,6 +14,7 @@ import StatusBadge from '../components/StatusBadge'
 import PipelineBoard from '../components/pipeline/PipelineBoard'
 import LeadDrawer from '../components/LeadDrawer'
 import ImportLeadsModal from '../components/ImportLeadsModal'
+import TableRowSkeleton from '../components/TableRowSkeleton'
 import { useLeadsRealtime } from '../hooks/useLeadsRealtime'
 import { supabase } from '../lib/supabase'
 import { exportLeadsToXlsx } from '../lib/exportLeads'
@@ -66,10 +67,29 @@ const labelCls = 'block text-sm font-medium text-slate-700 mb-1.5'
 
 export default function Leads() {
   const { statuses: allStatuses, refresh: refreshStatuses, getConfig: getStatusConfig, loading: loadingStatuses } = useStatuses()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(
     () => searchParams.get('lead')
   )
+
+  // navigate('/leads?lead=X') não remonta o componente quando já estamos em /leads
+  // (ex: duplo clique num card do Pipeline) — sincroniza o estado com a URL sempre
+  // que o parâmetro mudar, não só na montagem inicial.
+  useEffect(() => {
+    setSelectedLeadId(searchParams.get('lead'))
+  }, [searchParams])
+
+  // Ao fechar, remove ?lead= da URL (não só o estado local) — senão reabrir o
+  // MESMO lead depois não muda a URL, o efeito acima não dispara de novo, e o
+  // drawer não reabre.
+  function closeDrawer() {
+    setSelectedLeadId(null)
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete('lead')
+      return next
+    }, { replace: true })
+  }
 
   const [leads, setLeads] = useState<LeadWithRelations[]>([])
   const [sources, setSources] = useState<LeadSource[]>([])
@@ -101,6 +121,8 @@ export default function Leads() {
   const [filterTags, setFilterTags] = useState<string[]>([])
   const [showTagsMenu, setShowTagsMenu] = useState(false)
   const tagsMenuRef = useRef<HTMLDivElement>(null)
+  const [showActionsMenu, setShowActionsMenu] = useState(false)
+  const actionsMenuRef = useRef<HTMLDivElement>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -125,6 +147,17 @@ export default function Leads() {
     document.addEventListener('mousedown', handleOutside)
     return () => document.removeEventListener('mousedown', handleOutside)
   }, [showTagsMenu])
+
+  useEffect(() => {
+    if (!showActionsMenu) return
+    function handleOutside(e: MouseEvent) {
+      if (actionsMenuRef.current && !actionsMenuRef.current.contains(e.target as Node)) {
+        setShowActionsMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [showActionsMenu])
 
   function toggleFilterTag(tag: string) {
     setFilterTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])
@@ -301,7 +334,7 @@ export default function Leads() {
           <div>
             <h1 className="text-slate-900 text-xl font-semibold">Leads</h1>
             <div className="flex items-center gap-2 mt-0.5">
-              <p className="text-slate-500 text-sm">{leads.length} contato{leads.length !== 1 ? 's' : ''} no total</p>
+              <p className="text-slate-500 text-sm">{leads.length} {leads.length === 1 ? 'contato no total' : 'contatos no total'}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -369,31 +402,51 @@ export default function Leads() {
               </div>
             )}
 
-            <button
-              onClick={handleExport}
-              title={selectedIds.size ? 'Exportar apenas os leads selecionados' : 'Exportar para Excel (respeita os filtros)'}
-              className="flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-sm font-medium px-3 py-1.5 rounded-lg transition"
-            >
-              <Download size={15} />
-              {selectedIds.size ? `Exportar (${selectedIds.size})` : 'Exportar'}
-            </button>
-            <button
-              onClick={() => setShowImport(true)}
-              title="Importar base de leads (CSV ou Excel)"
-              className="flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-sm font-medium px-3 py-1.5 rounded-lg transition"
-            >
-              <Upload size={15} />
-              Importar
-            </button>
-            <button
-              onClick={() => { resetForm(); setShowModal(true) }}
-              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition"
-            >
-              <Plus size={16} />
-              Novo lead
-            </button>
+            <div className="relative" ref={actionsMenuRef}>
+              <button
+                onClick={() => setShowActionsMenu(v => !v)}
+                className={`flex items-center gap-2 border text-sm font-medium px-3 py-1.5 rounded-lg transition ${
+                  showActionsMenu
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Mais ações
+                <ChevronDown size={14} />
+              </button>
+
+              {showActionsMenu && (
+                <div className="absolute right-0 top-full mt-1.5 w-56 bg-white rounded-xl border border-slate-100 shadow-lg z-30 py-1.5">
+                  <button
+                    onClick={() => { setShowActionsMenu(false); handleExport() }}
+                    title={selectedIds.size ? 'Exportar apenas os leads selecionados' : 'Exportar para Excel (respeita os filtros)'}
+                    className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 transition"
+                  >
+                    <Download size={15} />
+                    {selectedIds.size ? `Exportar (${selectedIds.size})` : 'Exportar'}
+                  </button>
+                  <button
+                    onClick={() => { setShowActionsMenu(false); setShowImport(true) }}
+                    title="Importar base de leads (CSV ou Excel)"
+                    className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 transition"
+                  >
+                    <Upload size={15} />
+                    Importar
+                  </button>
+                  <div className="my-1.5 border-t border-slate-100" />
+                  <button
+                    onClick={() => { setShowActionsMenu(false); resetForm(); setShowModal(true) }}
+                    className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-emerald-700 font-medium hover:bg-emerald-50 transition"
+                  >
+                    <Plus size={15} />
+                    Novo lead
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
 
         {/* Filtros — só na lista */}
         {viewMode === 'list' && (
@@ -495,15 +548,26 @@ export default function Leads() {
         {/* Pipeline view */}
         {viewMode === 'pipeline' && (
           (loading || loadingStatuses) ? (
-            <div className="flex items-center justify-center py-32">
-              <Loader2 size={24} className="text-slate-300 animate-spin" />
+            <div className="flex gap-3 min-w-max">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex flex-col w-72 shrink-0">
+                  <div className="h-12 rounded-t-xl bg-slate-100 animate-pulse" />
+                  <div className="flex-1 rounded-b-xl bg-slate-50 p-2 space-y-2">
+                    {Array.from({ length: 3 }).map((_, j) => (
+                      <div key={j} className="h-24 rounded-xl bg-slate-100 animate-pulse" />
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
-            <PipelineBoard
-              leads={visibleLeads}
-              onLeadsChange={(next) => setLeads(prev => [...next, ...prev.filter(l => l.arquivado)])}
-              columnsLocked={true}
-            />
+            <div className="animate-fade-in">
+              <PipelineBoard
+                leads={visibleLeads}
+                onLeadsChange={(next) => setLeads(prev => [...next, ...prev.filter(l => l.arquivado)])}
+                columnsLocked={true}
+              />
+            </div>
           )
         )}
 
@@ -511,15 +575,24 @@ export default function Leads() {
         {viewMode === 'list' && (
           <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
             {loading ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 size={20} className="text-slate-300 animate-spin" />
-              </div>
+              <TableRowSkeleton
+                rows={8}
+                cols={[
+                  { width: 'w-4', height: 'h-4' },
+                  { width: 'w-8', height: 'h-8', circle: true },
+                  { width: 'w-36' },
+                  { width: 'w-16' },
+                  { width: 'w-16' },
+                  { width: 'w-16' },
+                  { width: 'w-20' },
+                ]}
+              />
             ) : filtered.length === 0 ? (
               <div className="py-16 text-center">
                 <p className="text-slate-400 text-sm">Nenhum lead encontrado.</p>
               </div>
             ) : (
-              <table className="w-full">
+              <table className="w-full animate-fade-in">
                 <thead>
                   <tr className="border-b border-slate-100">
                     <th className="px-4 py-3.5 w-10">
@@ -602,7 +675,7 @@ export default function Leads() {
 
       <LeadDrawer
         leadId={selectedLeadId}
-        onClose={() => setSelectedLeadId(null)}
+        onClose={closeDrawer}
         onSaved={(l) => setLeads(prev => prev.map(x => x.id === l.id ? l : x))}
       />
 
