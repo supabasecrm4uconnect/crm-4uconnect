@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  UserPlus, MessageCircle, FileText,
-  CalendarClock, AlertCircle, CheckCircle2, XCircle,
+  UserPlus, UserCheck, MessageCircle, FileText,
+  CalendarClock, CheckCircle2,
   ArrowRight, TrendingUp, Users, Globe, DollarSign, Wallet, Loader2,
 } from 'lucide-react'
 import Layout from '../components/Layout'
 import StatusBadge from '../components/StatusBadge'
+import LeadAvatar from '../components/LeadAvatar'
 import { supabase } from '../lib/supabase'
 import { localDateStr, whatsappLink, formatDateTime, formatCurrency } from '../lib/helpers'
 
@@ -17,6 +18,7 @@ interface Stats {
   proposta_enviada: number
   followups_hoje: number
   followups_atrasados: number
+  concluidos_hoje: number
   fechados: number
   perdidos: number
   valor_negociacao: number
@@ -63,6 +65,7 @@ interface LeadRecente {
   nome: string
   status: string
   created_at: string
+  foto_url: string | null
   lead_sources: { nome: string } | null
 }
 
@@ -92,7 +95,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [stats, setStats] = useState<Stats>({
     total_leads: 0, novos_hoje: 0, em_atendimento: 0, proposta_enviada: 0,
-    followups_hoje: 0, followups_atrasados: 0, fechados: 0, perdidos: 0,
+    followups_hoje: 0, followups_atrasados: 0, concluidos_hoje: 0, fechados: 0, perdidos: 0,
     valor_negociacao: 0, valor_fechado: 0,
   })
   const [followupsHoje, setFollowupsHoje] = useState<FollowUp[]>([])
@@ -155,6 +158,7 @@ export default function Dashboard() {
         { count: proposta_enviada },
         { count: followups_hoje },
         { count: followups_atrasados },
+        { count: concluidos_hoje },
         { count: fechados },
         { count: perdidos },
         { data: atividadesHoje },
@@ -167,6 +171,7 @@ export default function Dashboard() {
         countLeads(q => q.eq('status', 'proposta_enviada')),
         supabase.from('lead_activities').select('*', { count: 'exact', head: true }).eq('data_agendada', today).eq('status_atividade', 'pendente'),
         supabase.from('lead_activities').select('*', { count: 'exact', head: true }).lt('data_agendada', today).eq('status_atividade', 'pendente'),
+        supabase.from('lead_activities').select('*', { count: 'exact', head: true }).eq('status_atividade', 'concluida').gte('concluido_em', dayStartISO(today)).lte('concluido_em', dayEndISO(today)),
         countLeads(q => q.eq('status', 'fechado')),
         countLeads(q => q.eq('status', 'perdido')),
         supabase.from('lead_activities')
@@ -175,7 +180,7 @@ export default function Dashboard() {
           .eq('status_atividade', 'pendente')
           .order('hora_agendada'),
         supabase.from('leads')
-          .select('id, nome, status, created_at, lead_sources(nome)')
+          .select('id, nome, status, created_at, foto_url, lead_sources(nome)')
           .order('created_at', { ascending: false })
           .limit(5),
         inRange(supabase.from('leads').select('valor, status, lead_sources(nome)')),
@@ -203,6 +208,7 @@ export default function Dashboard() {
         proposta_enviada:     proposta_enviada     ?? 0,
         followups_hoje:       followups_hoje       ?? 0,
         followups_atrasados:  followups_atrasados  ?? 0,
+        concluidos_hoje:      concluidos_hoje      ?? 0,
         fechados:             fechados             ?? 0,
         perdidos:             perdidos             ?? 0,
         valor_negociacao:     valorNeg,
@@ -245,36 +251,16 @@ export default function Dashboard() {
       label: 'Novos hoje',
       value: stats.novos_hoje,
       icon: UserPlus,
-      color: 'text-emerald-600',
-      bg: 'bg-emerald-50',
+      color: 'text-slate-600',
+      bg: 'bg-slate-100',
       highlight: false,
       to: null,
-    },
-    {
-      label: 'Follow-ups hoje',
-      value: stats.followups_hoje,
-      icon: CalendarClock,
-      color: 'text-amber-600',
-      bg: 'bg-amber-50',
-      highlight: false,
-      to: '/followups',
-    },
-    {
-      label: 'Atrasados',
-      value: stats.followups_atrasados,
-      icon: AlertCircle,
-      color: stats.followups_atrasados > 0 ? 'text-red-600' : 'text-slate-400',
-      bg:    stats.followups_atrasados > 0 ? 'bg-red-50'   : 'bg-slate-100',
-      highlight: stats.followups_atrasados > 0,
-      to: '/followups',
     },
   ]
 
   const cardsPipeline = [
-    { label: 'Em atendimento',  value: stats.em_atendimento,  icon: MessageCircle, color: 'text-blue-600',    bg: 'bg-blue-50',    status: 'em_atendimento'  },
-    { label: 'Proposta enviada',value: stats.proposta_enviada, icon: FileText,      color: 'text-violet-600',  bg: 'bg-violet-50',  status: 'proposta_enviada' },
-    { label: 'Fechados',        value: stats.fechados,         icon: CheckCircle2,  color: 'text-emerald-600', bg: 'bg-emerald-50', status: 'fechado'          },
-    { label: 'Perdidos',        value: stats.perdidos,         icon: XCircle,       color: 'text-slate-400',   bg: 'bg-slate-100',  status: 'perdido'          },
+    { label: 'Em atendimento',  value: stats.em_atendimento,  icon: UserCheck, color: 'text-slate-600', bg: 'bg-slate-100', status: 'em_atendimento'  },
+    { label: 'Proposta enviada',value: stats.proposta_enviada, icon: FileText,  color: 'text-slate-600', bg: 'bg-slate-100', status: 'proposta_enviada' },
   ]
 
   const skeletonCard = (
@@ -353,6 +339,37 @@ export default function Dashboard() {
                       <p className="text-slate-500 text-sm mt-0.5 truncate">{label}</p>
                     </div>
                   ))}
+
+                  {/* Atividades: Hoje / Atrasados / Concluídos combinados num único card */}
+                  <div
+                    onClick={() => navigate('/followups')}
+                    className={`col-span-2 bg-white rounded-xl border p-5 transition-shadow hover:shadow-md cursor-pointer ${
+                      stats.followups_atrasados > 0 ? 'border-red-200 shadow-sm' : 'border-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                        <CalendarClock size={16} className="text-slate-600" />
+                      </div>
+                      <p className="text-sm font-medium text-slate-600">Follow-ups</p>
+                    </div>
+                    <div className="flex items-center gap-5">
+                      <div className="min-w-0">
+                        <p className="text-2xl font-semibold text-slate-900 truncate">{stats.followups_hoje}</p>
+                        <p className="text-slate-500 text-sm mt-0.5 truncate">Hoje</p>
+                      </div>
+                      <div className="w-px h-9 bg-slate-100 shrink-0" />
+                      <div className="min-w-0">
+                        <p className={`text-2xl font-semibold truncate ${stats.followups_atrasados > 0 ? 'text-red-600' : 'text-slate-900'}`}>{stats.followups_atrasados}</p>
+                        <p className="text-slate-500 text-sm mt-0.5 truncate">Atrasados</p>
+                      </div>
+                      <div className="w-px h-9 bg-slate-100 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-2xl font-semibold text-emerald-600 truncate">{stats.concluidos_hoje}</p>
+                        <p className="text-slate-500 text-sm mt-0.5 truncate">Concluídos</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-4 gap-4">
@@ -372,6 +389,27 @@ export default function Dashboard() {
                       </div>
                     </div>
                   ))}
+
+                  {/* Finalizados: Fechados / Perdidos combinados num único card */}
+                  <div className="col-span-2 bg-white rounded-xl border border-slate-100 p-5 transition-shadow hover:shadow-md">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                        <CheckCircle2 size={16} className="text-slate-600" />
+                      </div>
+                      <p className="text-sm font-medium text-slate-600">Finalizados</p>
+                    </div>
+                    <div className="flex items-center gap-5">
+                      <div onClick={() => navigate('/leads?status=fechado')} className="min-w-0 cursor-pointer group">
+                        <p className="text-2xl font-semibold text-emerald-600 truncate">{stats.fechados}</p>
+                        <p className="text-slate-500 text-sm mt-0.5 truncate group-hover:text-slate-700 transition">Fechados</p>
+                      </div>
+                      <div className="w-px h-9 bg-slate-100 shrink-0" />
+                      <div onClick={() => navigate('/leads?status=perdido')} className="min-w-0 cursor-pointer group">
+                        <p className="text-2xl font-semibold text-slate-400 truncate">{stats.perdidos}</p>
+                        <p className="text-slate-500 text-sm mt-0.5 truncate group-hover:text-slate-700 transition">Perdidos</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -380,15 +418,15 @@ export default function Dashboard() {
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Valores {period !== 'todos' && '(no período)'}</p>
                 <div className="space-y-4">
                   <div className="bg-white rounded-xl border border-slate-100 p-5">
-                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center mb-4">
-                      <Wallet size={16} className="text-amber-600" />
+                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center mb-4">
+                      <Wallet size={16} className="text-slate-600" />
                     </div>
                     <p className="text-slate-900 text-2xl font-semibold tabular-nums truncate">{formatCurrency(stats.valor_negociacao) || 'R$ 0,00'}</p>
                     <p className="text-slate-500 text-sm mt-0.5 truncate">Em negociação</p>
                   </div>
                   <div className="bg-white rounded-xl border border-slate-100 p-5">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center mb-4">
-                      <DollarSign size={16} className="text-emerald-600" />
+                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center mb-4">
+                      <DollarSign size={16} className="text-slate-600" />
                     </div>
                     <p className="text-slate-900 text-2xl font-semibold tabular-nums truncate">{formatCurrency(stats.valor_fechado) || 'R$ 0,00'}</p>
                     <p className="text-slate-500 text-sm mt-0.5 truncate">Fechado</p>
@@ -442,11 +480,14 @@ export default function Dashboard() {
                           onClick={() => navigate(`/leads?lead=${lead.id}`)}
                           className="px-6 py-3 flex items-center justify-between hover:bg-slate-50 transition cursor-pointer"
                         >
-                          <div className="min-w-0 flex-1">
-                            <p className="text-slate-900 text-sm font-medium truncate">{lead.nome}</p>
-                            <p className="text-slate-400 text-xs mt-0.5">
-                              {lead.lead_sources?.nome ?? 'Sem origem'} · {formatDateTime(lead.created_at)}
-                            </p>
+                          <div className="min-w-0 flex-1 flex items-center gap-3">
+                            <LeadAvatar nome={lead.nome} foto_url={lead.foto_url} size="sm" />
+                            <div className="min-w-0">
+                              <p className="text-slate-900 text-sm font-medium truncate">{lead.nome}</p>
+                              <p className="text-slate-400 text-xs mt-0.5">
+                                {lead.lead_sources?.nome ?? 'Sem origem'} · {formatDateTime(lead.created_at)}
+                              </p>
+                            </div>
                           </div>
                           <div className="ml-4 shrink-0">
                             <StatusBadge status={lead.status} />
@@ -464,14 +505,14 @@ export default function Dashboard() {
                       <Globe size={14} className="text-slate-400" />
                       <h2 className="text-slate-900 text-sm font-semibold">Por origem</h2>
                     </div>
-                    <div className="px-6 py-4 space-y-3.5">
+                    <div className="px-6 py-4 space-y-4">
                       {origens.map(({ nome, count }) => (
                         <div key={nome}>
-                          <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center justify-between mb-1.5">
                             <span className="text-slate-700 text-xs font-medium truncate max-w-[140px]">{nome}</span>
-                            <span className="text-slate-500 text-xs tabular-nums ml-2">{count}</span>
+                            <span className="text-slate-700 text-sm font-semibold tabular-nums ml-2">{count}</span>
                           </div>
-                          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-emerald-400 rounded-full transition-all duration-500"
                               style={{ width: `${Math.round((count / maxOrigemCount) * 100)}%` }}

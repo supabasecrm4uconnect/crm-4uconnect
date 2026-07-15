@@ -80,10 +80,10 @@ export default function FollowUps() {
   }, [filterDataDe, filterDataAte, filterTipo]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const sections: { key: Section; label: string; icon: typeof CalendarClock; iconColor: string; bg: string; count: number }[] = [
-    { key: 'atrasados',  label: 'Atrasados',  icon: AlertCircle,   iconColor: 'text-red-600',     bg: 'bg-red-50',     count: grouped.atrasados.length  },
-    { key: 'hoje',       label: 'Hoje',       icon: CalendarClock, iconColor: 'text-amber-600',   bg: 'bg-amber-50',   count: grouped.hoje.length       },
-    { key: 'proximos',   label: 'Próximos',   icon: Clock,         iconColor: 'text-blue-600',    bg: 'bg-blue-50',    count: grouped.proximos.length   },
-    { key: 'concluidos', label: 'Concluídos', icon: CalendarCheck, iconColor: 'text-emerald-600', bg: 'bg-emerald-50', count: grouped.concluidos.length },
+    { key: 'atrasados',  label: 'Atrasados',  icon: AlertCircle,   iconColor: 'text-slate-600', bg: 'bg-slate-100', count: grouped.atrasados.length  },
+    { key: 'hoje',       label: 'Hoje',       icon: CalendarClock, iconColor: 'text-slate-600', bg: 'bg-slate-100', count: grouped.hoje.length       },
+    { key: 'proximos',   label: 'Próximos',   icon: Clock,         iconColor: 'text-slate-600', bg: 'bg-slate-100', count: grouped.proximos.length   },
+    { key: 'concluidos', label: 'Concluídos', icon: CalendarCheck, iconColor: 'text-slate-600', bg: 'bg-slate-100', count: grouped.concluidos.length },
   ]
 
   const current = grouped[activeSection]
