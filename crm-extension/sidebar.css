@@ -552,11 +552,32 @@
   max-width: 320px;
   max-height: 240px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #10b981 transparent;
   padding: 6px;
+}
+
+.crm-custom-select-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.crm-custom-select-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.crm-custom-select-menu::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #10b981;
+}
+
+.crm-custom-select-menu::-webkit-scrollbar-thumb:hover {
+  background: #059669;
 }
 
 .crm-custom-select-option {
   width: 100%;
+  flex: 0 0 auto;
   min-height: 34px;
   display: flex;
   align-items: center;

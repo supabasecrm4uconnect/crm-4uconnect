@@ -101,6 +101,8 @@ sublinhado usado no drawer de leads do CRM.
   cor, tipografia, espaçamento, bordas, sombras e estados ativos do CRM Web.
 - As opções dos listboxes exibem os ícones equivalentes aos usados no CRM;
   opções de status preservam os indicadores de cor.
+- Listboxes longos mantêm altura máxima de 240px e rolagem vertical, sem reduzir
+  a altura individual das opções.
 - O calendário oferece navegação mensal e ações **Limpar** e **Hoje** sem depender
   do seletor nativo do navegador.
 - O horário oferece colunas de hora/minuto, ação **Agora**, atalhos e confirmação,
