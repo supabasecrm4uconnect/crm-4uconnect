@@ -8,14 +8,16 @@ import { supabase } from './supabase'
 export async function recalcProximoFollowup(leadId: string): Promise<string | null> {
   const { data } = await supabase
     .from('lead_activities')
-    .select('data_agendada')
+    .select('data_agendada, hora_agendada')
     .eq('lead_id', leadId)
     .eq('status_atividade', 'pendente')
     .order('data_agendada', { ascending: true })
+    .order('hora_agendada', { ascending: true })
     .limit(1)
     .maybeSingle()
 
-  const proximo = data ? `${data.data_agendada}T12:00:00.000Z` : null
+  const hora = data?.hora_agendada ? data.hora_agendada.slice(0, 8) : '12:00:00'
+  const proximo = data ? `${data.data_agendada}T${hora}` : null
   await supabase.from('leads').update({ proximo_followup: proximo }).eq('id', leadId)
   return proximo
 }

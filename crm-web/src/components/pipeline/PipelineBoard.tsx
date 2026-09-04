@@ -5,9 +5,10 @@ import {
   type DragStartEvent, type DragEndEvent,
 } from '@dnd-kit/core'
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
-import { X, Loader2, AlertTriangle } from 'lucide-react'
+import { X, Loader2, AlertTriangle, Check, HelpCircle } from 'lucide-react'
 import PipelineColumn from './PipelineColumn'
 import LeadCard from './LeadCard'
+import CustomSelect from '../CustomSelect'
 import { supabase } from '../../lib/supabase'
 import { useStatuses } from '../../contexts/StatusesContext'
 import { addDaysLocal, allLossReasons, TERMINAL_STATUSES } from '../../lib/helpers'
@@ -96,7 +97,6 @@ export default function PipelineBoard({ leads, onLeadsChange, columnsLocked }: P
     const lead = leads.find(l => l.id === leadId)
     if (!lead || lead.status === newStatus) return
 
-    const prevStatus = lead.status
     const updated = leads.map(l => l.id === leadId ? { ...l, status: newStatus } : l)
     onLeadsChange(updated)
 
@@ -108,13 +108,6 @@ export default function PipelineBoard({ leads, onLeadsChange, columnsLocked }: P
       setError('Erro ao mover lead. Tente novamente.')
       return
     }
-
-    await supabase.from('lead_status_history').insert({
-      lead_id: leadId,
-      status_anterior: prevStatus,
-      status_novo: newStatus,
-      alterado_por: user?.id ?? null,
-    })
 
     if (TERMINAL_STATUSES.includes(newStatus)) {
       // Estado final do funil (Fechado/Perdido): encerra qualquer tarefa pendente
@@ -176,12 +169,17 @@ export default function PipelineBoard({ leads, onLeadsChange, columnsLocked }: P
         <div ref={scrollRef} className="w-full overflow-x-auto pb-4 scrollbar-hide">
           {columnsLocked ? (
             <div className="flex gap-3 min-w-max">
-              {activeStatuses.map(statusCfg => (
-                <PipelineColumn
+              {activeStatuses.map((statusCfg, idx) => (
+                <div
                   key={statusCfg.value}
-                  statusCfg={statusCfg}
-                  leads={grouped[statusCfg.value] ?? []}
-                />
+                  className="animate-cascade-item"
+                  style={{ animationDelay: `${idx * 50}ms` }}
+                >
+                  <PipelineColumn
+                    statusCfg={statusCfg}
+                    leads={grouped[statusCfg.value] ?? []}
+                  />
+                </div>
               ))}
             </div>
           ) : (
@@ -190,13 +188,18 @@ export default function PipelineBoard({ leads, onLeadsChange, columnsLocked }: P
               strategy={horizontalListSortingStrategy}
             >
               <div className="flex gap-3 min-w-max">
-                {activeStatuses.map(statusCfg => (
-                  <PipelineColumn
+                {activeStatuses.map((statusCfg, idx) => (
+                  <div
                     key={statusCfg.value}
-                    statusCfg={statusCfg}
-                    leads={grouped[statusCfg.value] ?? []}
-                    sortable
-                  />
+                    className="animate-cascade-item"
+                    style={{ animationDelay: `${idx * 50}ms` }}
+                  >
+                    <PipelineColumn
+                      statusCfg={statusCfg}
+                      leads={grouped[statusCfg.value] ?? []}
+                      sortable
+                    />
+                  </div>
                 ))}
               </div>
             </SortableContext>
@@ -235,6 +238,11 @@ function LossReasonModal({ lead, onClose, onSaved }: LossReasonModalProps) {
   const [outro, setOutro] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const reasonOptions = useMemo(() => options.map(o => ({
+    value: o.value,
+    label: o.label,
+  })), [options])
+
   async function handleSave() {
     const valor = motivo === 'outro' ? outro.trim() : motivo
     if (!valor) return
@@ -246,42 +254,49 @@ function LossReasonModal({ lead, onClose, onSaved }: LossReasonModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-          <h2 className="text-slate-900 text-base font-semibold">Por que {lead.nome} foi perdido?</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition"><X size={18} /></button>
+    <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-sm overflow-hidden animate-scale-in" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-slate-50/60">
+          <h2 className="text-slate-950 text-base font-bold">Por que {lead.nome} foi perdido?</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition cursor-pointer"><X size={18} /></button>
         </div>
         <div className="px-6 py-5 space-y-3">
-          <select
-            autoFocus
-            value={motivo}
-            onChange={e => setMotivo(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-          >
-            <option value="">Selecionar motivo</option>
-            {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">Motivo da Perda</label>
+            <CustomSelect
+              value={motivo}
+              onChange={val => setMotivo(val)}
+              options={reasonOptions}
+              placeholder="Selecione o motivo"
+              icon={HelpCircle}
+              buttonClassName="w-full"
+            />
+          </div>
           {motivo === 'outro' && (
             <input
               value={outro}
               onChange={e => setOutro(e.target.value)}
               placeholder="Descreva o motivo..."
-              className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+              className="w-full h-10 px-3 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
             />
           )}
-          <div className="flex justify-end gap-3 pt-1">
-            <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 transition cursor-pointer shadow-2xs select-none"
+            >
+              <X size={14} className="text-slate-400" />
               Pular
             </button>
             <button
               type="button"
               onClick={handleSave}
               disabled={saving || !motivo || (motivo === 'outro' && !outro.trim())}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium transition"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed border border-emerald-700/50 text-white text-xs font-bold transition cursor-pointer shadow-2xs select-none"
             >
-              {saving && <Loader2 size={14} className="animate-spin" />}
-              Salvar
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+              {saving ? 'Salvando...' : 'Salvar Motivo'}
             </button>
           </div>
         </div>

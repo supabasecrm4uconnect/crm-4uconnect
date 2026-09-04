@@ -1,73 +1,89 @@
-# React + TypeScript + Vite
+# 💻 CRM 4U Connect — Painel Web
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Aplicação web SPA desenvolvida em **React 19 + TypeScript + Vite + Tailwind CSS** para gestão de clientes, funil de vendas, follow-ups e métricas de desempenho.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🛠️ Tecnologias Utilizadas
 
-## React Compiler
+- **Framework**: React 19 + TypeScript
+- **Bundler**: Vite
+- **Roteamento**: React Router v7
+- **Estilização**: Tailwind CSS + Lucide React (ícones)
+- **Backend & Auth**: Supabase JS SDK v2
+- **Hospedagem & Serverless**: Vercel (com Vercel Cron para keep-alive)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+## 📁 Estrutura de Diretórios
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```text
+crm-web/
+├── api/                       # Vercel Serverless Functions
+│   ├── keep-alive.js          # Executado via cron para manter o Supabase ativo
+│   └── status.js              # Endpoint de verificação de integridade
+├── public/                    # Arquivos estáticos
+├── src/
+│   ├── assets/                # Imagens e ícones
+│   ├── components/            # Componentes reutilizáveis
+│   │   ├── pipeline/          # Board Kanban, colunas e cards de lead
+│   │   ├── CommandPalette.tsx # Busca rápida e atalhos (Ctrl/Cmd + K)
+│   │   ├── ImportLeadsModal.tsx# Importador de leads via CSV
+│   │   ├── LeadDrawer.tsx     # Drawer lateral de detalhes, histórico e notas
+│   │   └── Layout.tsx         # Sidebar de navegação e layout padrão
+│   ├── contexts/              # Provedores de estado global
+│   │   ├── AuthContext.tsx    # Sessão e usuário logado no Supabase
+│   │   ├── BrandingContext.tsx# Logo e personalização visual da organização
+│   │   ├── FollowUpsContext.tsx# Notificações e contadores de follow-up
+│   │   └── StatusesContext.tsx# Status do funil carregados dinamicamente
+│   ├── hooks/                 # Custom React hooks (ex: useLeadsRealtime)
+│   ├── lib/                   # Utilitários, helpers e cliente do Supabase
+│   ├── pages/                 # Páginas da aplicação
+│   │   ├── Login.tsx          # Tela de autenticação
+│   │   ├── Dashboard.tsx      # Métricas de vendas, conversão e perda
+│   │   ├── Leads.tsx          # Visualização Kanban e Tabela de leads
+│   │   ├── FollowUps.tsx      # Agenda e tarefas programadas
+│   │   ├── Arquivados.tsx     # Gestão de leads arquivados
+│   │   ├── Configuracoes.tsx  # Configuração de status, origens, segmentos e membros
+│   │   ├── Diagnostico.tsx    # Visualizador de logs técnicos da extensão Chrome
+│   │   └── Status.tsx         # Página pública de status do serviço
+│   ├── types/                 # Interfaces TypeScript do modelo de dados
+│   ├── App.tsx                # Declaração de rotas e providers
+│   └── main.tsx               # Ponto de entrada da aplicação
+├── vercel.json                # Configuração de rewrites e crons na Vercel
+└── vite.config.ts             # Configuração do Vite
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+---
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## 🚀 Comandos Disponíveis
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Execute dentro do diretório `crm-web/`:
+
+```bash
+# Instalar dependências
+npm install
+
+# Iniciar servidor de desenvolvimento (http://localhost:5173)
+npm run dev
+
+# Gerar build de produção para Vercel
+npm run build
+
+# Executar verificação de linting
+npm run lint
+
+# Visualizar o build de produção localmente
+npm run preview
+```
+
+---
+
+## 🔐 Variáveis de Ambiente (`.env`)
+
+Crie o arquivo `.env` com base no `.env.example`:
+
+```env
+VITE_SUPABASE_URL=https://<seu-projeto>.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOi...
 ```

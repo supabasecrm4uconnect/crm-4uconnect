@@ -83,21 +83,65 @@ const StatusesContext = createContext<StatusesContextType>({
   loading: true,
 })
 
+export const DEFAULT_STATUSES: StatusConfig[] = [
+  { id: 'def_1', value: 'novo_lead',          label: 'Novo lead',          color_text: '#475569', color_bg: '#f1f5f9', color_dot: '#94a3b8', ordem: 1, ativo: true, auto_task_enabled: false, auto_task_tipo: null, auto_task_dias: null, auto_task_descricao: null },
+  { id: 'def_2', value: 'em_atendimento',     label: 'Em atendimento',     color_text: '#1d4ed8', color_bg: '#eff6ff', color_dot: '#3b82f6', ordem: 2, ativo: true, auto_task_enabled: false, auto_task_tipo: null, auto_task_dias: null, auto_task_descricao: null },
+  { id: 'def_3', value: 'aguardando_retorno', label: 'Aguardando retorno', color_text: '#b45309', color_bg: '#fffbeb', color_dot: '#f59e0b', ordem: 3, ativo: true, auto_task_enabled: false, auto_task_tipo: null, auto_task_dias: null, auto_task_descricao: null },
+  { id: 'def_4', value: 'proposta_enviada',   label: 'Proposta enviada',   color_text: '#6d28d9', color_bg: '#f5f3ff', color_dot: '#8b5cf6', ordem: 4, ativo: true, auto_task_enabled: false, auto_task_tipo: null, auto_task_dias: null, auto_task_descricao: null },
+  { id: 'def_5', value: 'followup_agendado',  label: 'Follow-up agendado', color_text: '#c2410c', color_bg: '#fff7ed', color_dot: '#f97316', ordem: 5, ativo: true, auto_task_enabled: false, auto_task_tipo: null, auto_task_dias: null, auto_task_descricao: null },
+  { id: 'def_6', value: 'fechado',            label: 'Fechado',            color_text: '#065f46', color_bg: '#ecfdf5', color_dot: '#10b981', ordem: 6, ativo: true, auto_task_enabled: false, auto_task_tipo: null, auto_task_dias: null, auto_task_descricao: null },
+  { id: 'def_7', value: 'perdido',            label: 'Perdido',            color_text: '#dc2626', color_bg: '#fef2f2', color_dot: '#f87171', ordem: 7, ativo: true, auto_task_enabled: false, auto_task_tipo: null, auto_task_dias: null, auto_task_descricao: null },
+]
+
 export function StatusesProvider({ children }: { children: React.ReactNode }) {
-  const [statuses, setStatuses] = useState<StatusConfig[]>([])
+  const [statuses, setStatuses] = useState<StatusConfig[]>(DEFAULT_STATUSES)
   const [loading, setLoading] = useState(true)
 
   async function load() {
-    const { data } = await supabase.from('lead_statuses').select('*').order('ordem')
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      setStatuses([])
+      setLoading(false)
+      return
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('organization_id')
+      .eq('id', session.user.id)
+      .single()
+
+    if (!profile?.organization_id) {
+      setStatuses(DEFAULT_STATUSES)
+      setLoading(false)
+      return
+    }
+
+    const { data } = await supabase
+      .from('lead_statuses')
+      .select('*')
+      .eq('organization_id', profile.organization_id)
+      .order('ordem')
     const rows = (data as StatusConfig[]) ?? []
-    setStatuses(rows)
+
+    // Deduplica por value para garantir integridade visual absoluta do Pipeline
+    const seen = new Set<string>()
+    const uniqueRows: StatusConfig[] = []
+    for (const r of rows) {
+      if (!seen.has(r.value)) {
+        seen.add(r.value)
+        uniqueRows.push(r)
+      }
+    }
+
+    setStatuses(uniqueRows.length > 0 ? uniqueRows : DEFAULT_STATUSES)
     setLoading(false)
 
     // Escreve no cache após carregar dados válidos, keyed pelo user ID atual.
-    if (rows.length > 0) {
-      supabase.auth.getUser().then(({ data: u }) => {
-        if (u.user) writeStatusesCache(u.user.id, rows)
-      })
+    if (uniqueRows.length > 0) {
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session?.user) writeStatusesCache(data.session.user.id, uniqueRows)
+      }).catch(() => {})
     }
   }
 

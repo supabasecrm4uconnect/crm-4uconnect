@@ -4,7 +4,7 @@ import { Clock, LogOut } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { session, profileStatus } = useAuth()
+  const { session, profileStatus, profile } = useAuth()
 
   // Carregando sessão ou status
   if (session === undefined || (session && profileStatus === undefined)) {
@@ -21,7 +21,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   if (profileStatus !== 'ativo') {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
-        <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 text-center">
+        <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-8 text-center">
           <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
             <Clock size={22} className="text-amber-500" />
           </div>
@@ -31,6 +31,29 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
           </p>
           <button
             onClick={() => supabase.auth.signOut()}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition"
+          >
+            <LogOut size={15} />
+            Sair
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (profile?.subscriptionActive === false) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
+        <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-8 text-center">
+          <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+            <Clock size={22} className="text-red-500" />
+          </div>
+          <h1 className="text-slate-900 text-lg font-semibold mb-2">Acesso temporariamente indisponível</h1>
+          <p className="text-slate-500 text-sm leading-relaxed mb-6">
+            A assinatura desta empresa está bloqueada ou vencida. Entre em contato com o administrador da plataforma para regularizar o acesso.
+          </p>
+          <button
+            onClick={() => supabase.auth.signOut({ scope: 'local' })}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition"
           >
             <LogOut size={15} />

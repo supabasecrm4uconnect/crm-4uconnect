@@ -91,7 +91,7 @@ export default function CommandPalette({ open, onOpenChange }: CommandPalettePro
   return (
     <div className="fixed inset-0 bg-black/40 z-[100] flex items-start justify-center pt-[15vh] px-4" onClick={() => onOpenChange(false)}>
       <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden"
+        className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-100">

@@ -1,20 +1,19 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, ChevronRight, ChevronDown, Loader2, X, LayoutList, Kanban, CalendarDays, SlidersHorizontal, GripVertical, Eye, Download, Upload, User, Phone, Flag, Globe, Tag, Tags, DollarSign, FileText } from 'lucide-react'
 import {
-  DndContext, PointerSensor, useSensor, useSensors, closestCenter,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import {
-  SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+  Plus, Search, ChevronRight, Loader2, X, LayoutList, Kanban,
+  CalendarDays, Download, Upload, MoreVertical, User,
+  Phone, Flag, Globe, Tag, Tags, DollarSign, FileText
+} from 'lucide-react'
 import Layout from '../components/Layout'
 import StatusBadge from '../components/StatusBadge'
 import PipelineBoard from '../components/pipeline/PipelineBoard'
 import LeadDrawer from '../components/LeadDrawer'
 import ImportLeadsModal from '../components/ImportLeadsModal'
-import TableRowSkeleton from '../components/TableRowSkeleton'
+import PipelineSkeleton from '../components/skeletons/PipelineSkeleton'
+import LeadTableSkeleton from '../components/skeletons/LeadTableSkeleton'
+import CustomSelect from '../components/CustomSelect'
+import CustomDateRangePicker from '../components/CustomDateRangePicker'
 import { useLeadsRealtime } from '../hooks/useLeadsRealtime'
 import { supabase } from '../lib/supabase'
 import { exportLeadsToXlsx } from '../lib/exportLeads'
@@ -22,66 +21,27 @@ import {
   formatWhatsApp, normalizeWhatsApp, formatCurrency, parseCurrency, phoneVariants,
   whatsappLink, localDateStr, formatDateTime
 } from '../lib/helpers'
-import { useStatuses, type StatusConfig } from '../contexts/StatusesContext'
+import { useStatuses } from '../contexts/StatusesContext'
 import LeadAvatar from '../components/LeadAvatar'
 import WhatsAppIcon from '../components/WhatsAppIcon'
-import { InputIcon, TextareaIcon, iconInputCls, iconSelectCls, iconTextareaCls } from '../components/FieldIcon'
+import { InputIcon, TextareaIcon, iconInputCls, iconTextareaCls } from '../components/FieldIcon'
 import type { LeadWithRelations, LeadSource, LeadSegment, LeadStatus } from '../types'
 
 type ViewMode = 'list' | 'pipeline'
 
-interface SortableStatusItemProps {
-  status: StatusConfig
-  onToggle: (id: string, ativo: boolean) => void
-}
-
-function SortableStatusItem({ status, onToggle }: SortableStatusItemProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: status.id })
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
-      className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50"
-    >
-      <button
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-400 touch-none shrink-0"
-      >
-        <GripVertical size={13} />
-      </button>
-      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: status.color_dot }} />
-      <span className="flex-1 text-sm text-slate-700 truncate">{status.label}</span>
-      <button
-        onClick={() => onToggle(status.id, !status.ativo)}
-        className={`shrink-0 transition ${status.ativo ? 'text-emerald-500 hover:text-emerald-600' : 'text-slate-300 hover:text-slate-400'}`}
-        title={status.ativo ? 'Ocultar coluna' : 'Exibir coluna'}
-      >
-        <Eye size={13} />
-      </button>
-    </div>
-  )
-}
-
 const labelCls = 'block text-sm font-medium text-slate-700 mb-1.5'
 
 export default function Leads() {
-  const { statuses: allStatuses, refresh: refreshStatuses, getConfig: getStatusConfig, loading: loadingStatuses } = useStatuses()
+  const { statuses: allStatuses, getConfig: getStatusConfig, loading: loadingStatuses } = useStatuses()
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(
     () => searchParams.get('lead')
   )
 
-  // navigate('/leads?lead=X') não remonta o componente quando já estamos em /leads
-  // (ex: duplo clique num card do Pipeline) — sincroniza o estado com a URL sempre
-  // que o parâmetro mudar, não só na montagem inicial.
   useEffect(() => {
     setSelectedLeadId(searchParams.get('lead'))
   }, [searchParams])
 
-  // Ao fechar, remove ?lead= da URL (não só o estado local) — senão reabrir o
-  // MESMO lead depois não muda a URL, o efeito acima não dispara de novo, e o
-  // drawer não reabre.
   function closeDrawer() {
     setSelectedLeadId(null)
     setSearchParams(prev => {
@@ -96,7 +56,6 @@ export default function Leads() {
   const [segments, setSegments] = useState<LeadSegment[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    // Se veio com ?status= do dashboard, força modo lista para o filtro funcionar
     if (searchParams.get('status')) return 'list'
     return (localStorage.getItem('crm_leads_view') as ViewMode) ?? 'list'
   })
@@ -115,38 +74,9 @@ export default function Leads() {
     })
   }
 
-  // Pipeline organizer
-  const [showColumnsMenu, setShowColumnsMenu] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const [filterTags, setFilterTags] = useState<string[]>([])
-  const [showTagsMenu, setShowTagsMenu] = useState(false)
-  const tagsMenuRef = useRef<HTMLDivElement>(null)
+  // Menu de Ações (3 pontos)
   const [showActionsMenu, setShowActionsMenu] = useState(false)
   const actionsMenuRef = useRef<HTMLDivElement>(null)
-
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
-
-  useEffect(() => {
-    if (!showColumnsMenu) return
-    function handleOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowColumnsMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', handleOutside)
-    return () => document.removeEventListener('mousedown', handleOutside)
-  }, [showColumnsMenu])
-
-  useEffect(() => {
-    if (!showTagsMenu) return
-    function handleOutside(e: MouseEvent) {
-      if (tagsMenuRef.current && !tagsMenuRef.current.contains(e.target as Node)) {
-        setShowTagsMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', handleOutside)
-    return () => document.removeEventListener('mousedown', handleOutside)
-  }, [showTagsMenu])
 
   useEffect(() => {
     if (!showActionsMenu) return
@@ -159,59 +89,62 @@ export default function Leads() {
     return () => document.removeEventListener('mousedown', handleOutside)
   }, [showActionsMenu])
 
+  const [filterTags, setFilterTags] = useState<string[]>([])
+  const [showTagsMenu, setShowTagsMenu] = useState(false)
+  const tagsMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showTagsMenu) return
+    function handleOutside(e: MouseEvent) {
+      if (tagsMenuRef.current && !tagsMenuRef.current.contains(e.target as Node)) {
+        setShowTagsMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [showTagsMenu])
+
   function toggleFilterTag(tag: string) {
     setFilterTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])
   }
 
-  async function toggleColumn(id: string, ativo: boolean) {
-    await supabase.from('lead_statuses').update({ ativo }).eq('id', id)
-    await refreshStatuses()
-  }
-
-  async function handleDropdownDragEnd(event: DragEndEvent) {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    const oldIndex = allStatuses.findIndex(s => s.id === String(active.id))
-    const newIndex = allStatuses.findIndex(s => s.id === String(over.id))
-    if (oldIndex === -1 || newIndex === -1) return
-    const reordered = arrayMove(allStatuses, oldIndex, newIndex)
-    await Promise.all(
-      reordered.map((s, i) =>
-        supabase.from('lead_statuses').update({ ordem: i + 1 }).eq('id', s.id)
-      )
-    )
-    await refreshStatuses()
-  }
-
-  // Filters
+  // Filtros
   const [search, setSearch] = useState('')
-  const [filterStatus, setFilterStatus] = useState(() => searchParams.get('status') ?? '')
-  const [filterOrigem, setFilterOrigem] = useState('')
-  const [filterSegmento, setFilterSegmento] = useState('')
-  const [filterDataDe, setFilterDataDe] = useState('')
-  const [filterDataAte, setFilterDataAte] = useState('')
+  const [filterStatus, setFilterStatus] = useState<string>(() => searchParams.get('status') ?? '')
+  const [filterOrigem, setFilterOrigem] = useState<string>('')
+  const [filterSegmento, setFilterSegmento] = useState<string>('')
+  const [filterDataDe, setFilterDataDe] = useState<string>('')
+  const [filterDataAte, setFilterDataAte] = useState<string>('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
-  // Create modal
+  // Modal novo lead
   const [showModal, setShowModal] = useState(false)
-  const [showImport, setShowImport] = useState(false)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
-  const [form, setForm] = useState({
-    nome: '', whatsapp: '', status: 'novo_lead' as LeadStatus,
-    origem_id: '', segmento_id: '', observacao: '', valor: '', tags: [] as string[],
-  })
   const [tagInput, setTagInput] = useState('')
+  const [form, setForm] = useState({
+    nome: '',
+    whatsapp: '',
+    status: 'novo_lead' as LeadStatus,
+    origem_id: '',
+    segmento_id: '',
+    observacao: '',
+    valor: '',
+    tags: [] as string[],
+  })
+
+  // Import modal
+  const [showImport, setShowImport] = useState(false)
+
+  // Realtime: adiciona/atualiza leads em tempo real
+  useLeadsRealtime(setLeads)
 
   useEffect(() => { loadAll() }, [])
-
-  // Realtime — atualiza pipeline e lista automaticamente
-  useLeadsRealtime(setLeads)
 
   async function loadAll() {
     setLoading(true)
     const [leadsRes, sourcesRes, segmentsRes] = await Promise.all([
-      supabase.from('leads').select('*, lead_sources(id, nome), lead_segments(id, nome), profiles(id, nome)').order('updated_at', { ascending: false }),
+      supabase.from('leads').select('*, lead_sources(id, nome), lead_segments(id, nome), profiles(id, nome)').order('created_at', { ascending: false }),
       supabase.from('lead_sources').select('*').eq('ativo', true).order('nome'),
       supabase.from('lead_segments').select('*').eq('ativo', true).order('nome'),
     ])
@@ -221,7 +154,6 @@ export default function Leads() {
     setLoading(false)
   }
 
-  // Lista e pipeline só mostram leads não arquivados (arquivados têm menu próprio)
   const visibleLeads = useMemo(() => leads.filter(l => !l.arquivado), [leads])
 
   const allTags = useMemo(() => {
@@ -229,6 +161,33 @@ export default function Leads() {
     leads.forEach(l => l.tags?.forEach(t => set.add(t)))
     return Array.from(set).sort((a, b) => a.localeCompare(b))
   }, [leads])
+
+  const statusOptions = useMemo(() => [
+    { value: '', label: 'Todos os status' },
+    ...allStatuses.map(s => ({
+      value: s.value,
+      label: s.label,
+      dotColor: s.color_dot || '#94a3b8',
+    })),
+  ], [allStatuses])
+
+  const sourceOptions = useMemo(() => [
+    { value: '', label: 'Todas as origens' },
+    ...sources.map(s => ({
+      value: s.id,
+      label: s.nome,
+      icon: Globe,
+    })),
+  ], [sources])
+
+  const segmentOptions = useMemo(() => [
+    { value: '', label: 'Todos os segmentos' },
+    ...segments.map(s => ({
+      value: s.id,
+      label: s.nome,
+      icon: Tag,
+    })),
+  ], [segments])
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
@@ -278,12 +237,9 @@ export default function Leads() {
     setSaving(true)
 
     const waNorm = normalizeWhatsApp(form.whatsapp)
-
-    // Consolida tag digitada mas ainda não confirmada (sem Enter/vírgula)
     const pendingTag = tagInput.trim()
     const finalTags = pendingTag && !form.tags.includes(pendingTag) ? [...form.tags, pendingTag] : form.tags
 
-    // Check duplicate — considera as variantes do 9º dígito (igual ao import)
     const { data: dups } = await supabase.from('leads').select('id').in('whatsapp', phoneVariants(form.whatsapp)).limit(1)
     if (dups && dups.length) {
       setFormError('Já existe um lead com esse número de WhatsApp.')
@@ -291,9 +247,22 @@ export default function Leads() {
       return
     }
 
+    // Validação de limite de leads do plano
+    const [{ count: currentTotalLeads }, { data: orgData }] = await Promise.all([
+      supabase.from('leads').select('*', { count: 'exact', head: true }),
+      supabase.from('organizations').select('max_leads, plano').limit(1).maybeSingle(),
+    ])
+
+    const maxLeads = orgData?.max_leads ?? 500
+    if ((currentTotalLeads ?? 0) >= maxLeads) {
+      setFormError(`Limite de leads atingido (${maxLeads.toLocaleString('pt-BR')} leads). Para cadastrar mais leads, faça upgrade do plano da organização.`)
+      setSaving(false)
+      return
+    }
+
     const { data: { user } } = await supabase.auth.getUser()
 
-    const { data: newLead, error } = await supabase.from('leads').insert({
+    const { error } = await supabase.from('leads').insert({
       nome: form.nome.trim(),
       whatsapp: waNorm,
       status: form.status,
@@ -311,14 +280,6 @@ export default function Leads() {
       return
     }
 
-    // First status history entry
-    await supabase.from('lead_status_history').insert({
-      lead_id: newLead.id,
-      status_anterior: null,
-      status_novo: form.status,
-      alterado_por: user?.id ?? null,
-    })
-
     setSaving(false)
     setShowModal(false)
     resetForm()
@@ -327,239 +288,226 @@ export default function Leads() {
 
   return (
     <Layout>
-      <div className="px-8 py-8 w-full min-w-0">
+      <div className="px-8 py-8 w-full min-w-0 animate-fade-in">
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-slate-900 text-xl font-semibold">Leads</h1>
-            <div className="flex items-center gap-2 mt-0.5">
-              <p className="text-slate-500 text-sm">{leads.length} {leads.length === 1 ? 'contato no total' : 'contatos no total'}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Toggle Lista / Pipeline */}
-            <div className="flex items-center bg-slate-100 rounded-lg p-1 gap-0.5">
-              <button
-                onClick={() => switchView('list')}
-                title="Visualização em lista"
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition ${
-                  viewMode === 'list'
-                    ? 'bg-white text-slate-800 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <LayoutList size={15} />
-                Lista
-              </button>
-              <button
-                onClick={() => switchView('pipeline')}
-                title="Visualização em pipeline"
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition ${
-                  viewMode === 'pipeline'
-                    ? 'bg-white text-slate-800 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <Kanban size={15} />
-                Pipeline
-              </button>
+        {/* Sticky Sub-Header no topo de /leads (fixo em top-[72px] abaixo do CRM Header) */}
+        <div className="sticky top-[72px] z-20 bg-slate-100/95 backdrop-blur-md pt-2 pb-4 -mx-8 px-8 border-b border-slate-200/70 mb-5">
+          {/* Header Superior: Título + Contador + Toggle Lista/Pipeline + Ações */}
+          <div className="flex items-center justify-between mb-3.5">
+            <div>
+              <h1 className="text-slate-900 text-xl font-bold tracking-tight">Leads</h1>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-slate-500 text-sm">{leads.length} {leads.length === 1 ? 'contato no total' : 'contatos no total'}</p>
+              </div>
             </div>
 
-            {/* Organizar pipeline — only in pipeline view */}
-            {viewMode === 'pipeline' && (
-              <div className="relative" ref={menuRef}>
+            <div className="flex items-center gap-2.5">
+              {/* Toggle Lista / Pipeline */}
+              <div className="flex items-center bg-slate-200/70 p-1 rounded-xl gap-0.5 border border-slate-200/80 shadow-2xs">
                 <button
-                  onClick={() => setShowColumnsMenu(v => !v)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition ${
-                    showColumnsMenu
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                  onClick={() => switchView('list')}
+                  title="Visualização em lista"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    viewMode === 'list'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <SlidersHorizontal size={14} />
-                  Organizar pipeline
+                  <LayoutList size={14} />
+                  Lista
+                </button>
+                <button
+                  onClick={() => switchView('pipeline')}
+                  title="Visualização em pipeline"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    viewMode === 'pipeline'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Kanban size={14} />
+                  Pipeline
+                </button>
+              </div>
+
+              {/* Menu de Ações (3 pontos) */}
+              <div className="relative" ref={actionsMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowActionsMenu(v => !v)}
+                  className={`flex items-center justify-center w-9 h-9 rounded-xl border text-xs font-bold transition shadow-2xs cursor-pointer ${
+                    showActionsMenu
+                      ? 'border-brand-500 bg-brand-50 text-brand-800 ring-2 ring-brand-500/20'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
+                  title="Mais opções"
+                >
+                  <MoreVertical size={16} />
                 </button>
 
-                {showColumnsMenu && (
-                  <div className="absolute right-0 top-full mt-1.5 w-64 bg-white rounded-xl border border-slate-100 shadow-lg z-30">
-                    <p className="px-4 pt-3 pb-1 text-xs font-medium text-slate-400 uppercase tracking-wide">Colunas do pipeline</p>
-                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDropdownDragEnd}>
-                      <SortableContext items={allStatuses.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                        <div className="px-2 pb-2">
-                          {allStatuses.map(s => (
-                            <SortableStatusItem
-                              key={s.id}
-                              status={s}
-                              onToggle={toggleColumn}
-                            />
-                          ))}
-                        </div>
-                      </SortableContext>
-                    </DndContext>
+                {showActionsMenu && (
+                  <div className="absolute right-0 top-full mt-1.5 w-48 bg-white rounded-xl border border-slate-200 shadow-dropdown z-50 p-1.5 animate-fade-in space-y-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowActionsMenu(false)
+                        resetForm()
+                        setShowModal(true)
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-emerald-700 hover:bg-emerald-50 transition cursor-pointer"
+                    >
+                      <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                        <Plus size={14} />
+                      </div>
+                      <span>Novo Lead</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowActionsMenu(false)
+                        setShowImport(true)
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer"
+                    >
+                      <div className="w-6 h-6 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center shrink-0 border border-sky-100">
+                        <Upload size={13} />
+                      </div>
+                      <span>Importar</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowActionsMenu(false)
+                        handleExport()
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer"
+                      title={selectedIds.size ? `Exportar ${selectedIds.size} selecionados` : 'Exportar todos os filtrados'}
+                    >
+                      <div className="w-6 h-6 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-100">
+                        <Download size={13} />
+                      </div>
+                      <div className="flex items-center justify-between flex-1 min-w-0">
+                        <span>Exportar</span>
+                        {selectedIds.size > 0 && (
+                          <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-md shrink-0">
+                            {selectedIds.size}
+                          </span>
+                        )}
+                      </div>
+                    </button>
                   </div>
                 )}
               </div>
-            )}
-
-            <div className="relative" ref={actionsMenuRef}>
-              <button
-                onClick={() => setShowActionsMenu(v => !v)}
-                className={`flex items-center gap-2 border text-sm font-medium px-3 py-1.5 rounded-lg transition ${
-                  showActionsMenu
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                Mais ações
-                <ChevronDown size={14} />
-              </button>
-
-              {showActionsMenu && (
-                <div className="absolute right-0 top-full mt-1.5 w-56 bg-white rounded-xl border border-slate-100 shadow-lg z-30 py-1.5">
-                  <button
-                    onClick={() => { setShowActionsMenu(false); handleExport() }}
-                    title={selectedIds.size ? 'Exportar apenas os leads selecionados' : 'Exportar para Excel (respeita os filtros)'}
-                    className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 transition"
-                  >
-                    <Download size={15} />
-                    {selectedIds.size ? `Exportar (${selectedIds.size})` : 'Exportar'}
-                  </button>
-                  <button
-                    onClick={() => { setShowActionsMenu(false); setShowImport(true) }}
-                    title="Importar base de leads (CSV ou Excel)"
-                    className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 transition"
-                  >
-                    <Upload size={15} />
-                    Importar
-                  </button>
-                  <div className="my-1.5 border-t border-slate-100" />
-                  <button
-                    onClick={() => { setShowActionsMenu(false); resetForm(); setShowModal(true) }}
-                    className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-emerald-700 font-medium hover:bg-emerald-50 transition"
-                  >
-                    <Plus size={15} />
-                    Novo lead
-                  </button>
-                </div>
-              )}
             </div>
           </div>
-        </div>
 
+          {/* Filtros Customizados — só na lista */}
+          {viewMode === 'list' && (
+            <div className="bg-white rounded-xl border border-slate-200/90 p-3 shadow-card flex flex-wrap gap-2.5 items-center">
 
-        {/* Filtros — só na lista */}
-        {viewMode === 'list' && (
-          <div className="flex flex-wrap gap-2.5 mb-5 items-center">
-            <div className="relative flex-1 min-w-52">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Buscar por nome, WhatsApp ou tag..."
-                className="w-full pl-9 pr-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition"
+              <div className="relative flex-1 min-w-[220px]">
+                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Buscar por nome, WhatsApp ou tag..."
+                  className="w-full pl-9 pr-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 placeholder:text-slate-400 bg-slate-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition shadow-2xs"
+                />
+              </div>
+
+              {/* Status */}
+              <CustomSelect
+                value={filterStatus}
+                onChange={setFilterStatus}
+                options={statusOptions}
+                placeholder="Todos os status"
+                icon={Flag}
               />
-            </div>
-            <InputIcon icon={Flag}>
-              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
-                <option value="">Todos os status</option>
-                {allStatuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </select>
-            </InputIcon>
-            <InputIcon icon={Globe}>
-              <select value={filterOrigem} onChange={e => setFilterOrigem(e.target.value)} className="pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
-                <option value="">Todas as origens</option>
-                {sources.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-              </select>
-            </InputIcon>
-            <InputIcon icon={Tag}>
-              <select value={filterSegmento} onChange={e => setFilterSegmento(e.target.value)} className="pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
-                <option value="">Todos os segmentos</option>
-                {segments.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-              </select>
-            </InputIcon>
-            <div className="flex items-center gap-1.5">
-              <InputIcon icon={CalendarDays}>
-                <input
-                  type="date"
-                  value={filterDataDe}
-                  onChange={e => setFilterDataDe(e.target.value)}
-                  title="Criado de"
-                  className="pl-9 pr-2 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-                />
-              </InputIcon>
-              <span className="text-slate-400 text-sm">até</span>
-              <InputIcon icon={CalendarDays}>
-                <input
-                  type="date"
-                  value={filterDataAte}
-                  onChange={e => setFilterDataAte(e.target.value)}
-                  title="Criado até"
-                  className="pl-9 pr-2 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-                />
-              </InputIcon>
-            </div>
-            <div className="relative" ref={tagsMenuRef}>
-              <button
-                onClick={() => setShowTagsMenu(v => !v)}
-                className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg border text-sm transition ${
-                  filterTags.length
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                <Tags size={15} className={filterTags.length ? 'text-emerald-600' : 'text-slate-400'} />
-                {filterTags.length ? `Tags (${filterTags.length})` : 'Tags'}
-              </button>
-              {showTagsMenu && (
-                <div className="absolute left-0 top-full mt-1.5 w-56 max-h-72 overflow-y-auto bg-white rounded-xl border border-slate-100 shadow-lg z-30">
-                  {allTags.length === 0 ? (
-                    <p className="px-4 py-3 text-sm text-slate-400">Nenhuma tag cadastrada</p>
-                  ) : (
-                    <div className="py-1.5">
-                      {allTags.map(tag => (
-                        <label key={tag} className="flex items-center gap-2 px-3.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={filterTags.includes(tag)}
-                            onChange={() => toggleFilterTag(tag)}
-                            className="accent-emerald-500"
-                          />
-                          {tag}
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
+
+              {/* Origem */}
+              <CustomSelect
+                value={filterOrigem}
+                onChange={setFilterOrigem}
+                options={sourceOptions}
+                placeholder="Todas as origens"
+                icon={Globe}
+              />
+
+              {/* Segmento */}
+              <CustomSelect
+                value={filterSegmento}
+                onChange={setFilterSegmento}
+                options={segmentOptions}
+                placeholder="Todos os segmentos"
+                icon={Tag}
+              />
+
+              {/* Data de Criação */}
+              <CustomDateRangePicker
+                startDate={filterDataDe}
+                endDate={filterDataAte}
+                onChange={(start, end) => {
+                  setFilterDataDe(start)
+                  setFilterDataAte(end)
+                }}
+                label="Criado em"
+              />
+
+              {/* Filtro de Tags */}
+              <div className="relative" ref={tagsMenuRef}>
+                <button
+                  onClick={() => setShowTagsMenu(v => !v)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition shadow-2xs cursor-pointer ${
+                    filterTags.length
+                      ? 'border-brand-300 bg-brand-50 text-brand-800'
+                      : 'border-slate-200 bg-slate-50/70 hover:bg-white text-slate-700'
+                  }`}
+                >
+                  <Tags size={14} className={filterTags.length ? 'text-brand-600' : 'text-slate-400'} />
+                  {filterTags.length ? `Tags (${filterTags.length})` : 'Tags'}
+                </button>
+                {showTagsMenu && (
+                  <div className="absolute right-0 top-full mt-1.5 w-56 max-h-72 overflow-y-auto bg-white rounded-xl border border-slate-200/90 shadow-dropdown z-50 p-2 animate-fade-in">
+                    {allTags.length === 0 ? (
+                      <p className="px-3 py-2 text-xs text-slate-400 font-medium">Nenhuma tag cadastrada</p>
+                    ) : (
+                      <div className="space-y-0.5">
+                        {allTags.map(tag => (
+                          <label key={tag} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={filterTags.includes(tag)}
+                              onChange={() => toggleFilterTag(tag)}
+                              className="accent-emerald-500 rounded"
+                            />
+                            {tag}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {(search || filterStatus || filterOrigem || filterSegmento || filterDataDe || filterDataAte || filterTags.length > 0) && (
+                <button
+                  onClick={() => { setSearch(''); setFilterStatus(''); setFilterOrigem(''); setFilterSegmento(''); setFilterDataDe(''); setFilterDataAte(''); setFilterTags([]); setSelectedIds(new Set()) }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition shadow-2xs cursor-pointer ml-auto"
+                >
+                  <X size={13} />
+                  Limpar
+                </button>
               )}
             </div>
-            {(search || filterStatus || filterOrigem || filterSegmento || filterDataDe || filterDataAte || filterTags.length > 0) && (
-              <button
-                onClick={() => { setSearch(''); setFilterStatus(''); setFilterOrigem(''); setFilterSegmento(''); setFilterDataDe(''); setFilterDataAte(''); setFilterTags([]); setSelectedIds(new Set()) }}
-                className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-500 hover:bg-slate-50 transition"
-              >
-                <X size={13} />
-                Limpar
-              </button>
-            )}
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Pipeline view */}
         {viewMode === 'pipeline' && (
           (loading || loadingStatuses) ? (
-            <div className="flex gap-3 min-w-max">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex flex-col w-72 shrink-0">
-                  <div className="h-12 rounded-t-xl bg-slate-100 animate-pulse" />
-                  <div className="flex-1 rounded-b-xl bg-slate-50 p-2 space-y-2">
-                    {Array.from({ length: 3 }).map((_, j) => (
-                      <div key={j} className="h-24 rounded-xl bg-slate-100 animate-pulse" />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <PipelineSkeleton columns={5} />
           ) : (
             <div className="animate-fade-in">
               <PipelineBoard
@@ -571,103 +519,147 @@ export default function Leads() {
           )
         )}
 
-        {/* Lista view */}
+        {/* Lista view com Grid Estilo Excel / Spreadsheet */}
         {viewMode === 'list' && (
-          <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
             {loading ? (
-              <TableRowSkeleton
-                rows={8}
-                cols={[
-                  { width: 'w-4', height: 'h-4' },
-                  { width: 'w-8', height: 'h-8', circle: true },
-                  { width: 'w-36' },
-                  { width: 'w-16' },
-                  { width: 'w-16' },
-                  { width: 'w-16' },
-                  { width: 'w-20' },
-                ]}
-              />
+              <LeadTableSkeleton rows={8} />
             ) : filtered.length === 0 ? (
-              <div className="py-16 text-center">
-                <p className="text-slate-400 text-sm">Nenhum lead encontrado.</p>
+              <div className="py-20 text-center">
+                <p className="text-slate-400 text-sm font-medium">Nenhum lead encontrado com os filtros aplicados.</p>
               </div>
             ) : (
-              <table className="w-full animate-fade-in">
-                <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="px-4 py-3.5 w-10">
-                      <input
-                        type="checkbox"
-                        checked={allSelected}
-                        onChange={toggleSelectAll}
-                        title="Selecionar todos"
-                        className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer accent-emerald-500"
-                      />
-                    </th>
-                    <th className="text-left text-xs font-medium text-slate-500 px-5 py-3.5">Contato</th>
-                    <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Status</th>
-                    <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Origem</th>
-                    <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Segmento</th>
-                    <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Valor</th>
-                    <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Responsável</th>
-                    <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Criado em</th>
-                    <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Próx. follow-up</th>
-                    <th className="px-4 py-3.5" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {filtered.map(lead => (
-                    <tr
-                      key={lead.id}
-                      onClick={() => setSelectedLeadId(lead.id)}
-                      className={`hover:bg-slate-50 cursor-pointer transition-colors ${selectedIds.has(lead.id) ? 'bg-emerald-50/40' : ''}`}
-                    >
-                      <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse border-b border-slate-200">
+                  <thead className="sticky top-0 z-10">
+                    <tr className="bg-slate-100 border-b border-slate-200 shadow-2xs">
+                      <th className="px-3.5 py-3 w-10 text-center border-r border-slate-200/90 select-none bg-slate-100">
                         <input
                           type="checkbox"
-                          checked={selectedIds.has(lead.id)}
-                          onChange={() => toggleSelect(lead.id)}
-                          className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer accent-emerald-500"
+                          checked={allSelected}
+                          onChange={toggleSelectAll}
+                          title="Selecionar todos"
+                          className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer accent-emerald-600"
                         />
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-3">
-                          <LeadAvatar nome={lead.nome} foto_url={lead.foto_url} />
-                          <div>
-                            <p className="text-slate-900 text-sm font-medium">{lead.nome}</p>
-                            <a
-                              href={whatsappLink(lead.whatsapp)}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={e => e.stopPropagation()}
-                              className="text-xs text-slate-400 hover:text-emerald-600 flex items-center gap-1 transition"
-                            >
-                              <WhatsAppIcon size={11} />
-                              {formatWhatsApp(lead.whatsapp)}
-                            </a>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5"><StatusBadge status={lead.status} /></td>
-                      <td className="px-4 py-3.5 text-sm text-slate-600">{lead.lead_sources?.nome ?? '—'}</td>
-                      <td className="px-4 py-3.5 text-sm text-slate-600">{lead.lead_segments?.nome ?? '—'}</td>
-                      <td className="px-4 py-3.5 text-sm text-slate-700 tabular-nums whitespace-nowrap">{lead.valor != null ? formatCurrency(lead.valor) : '—'}</td>
-                      <td className="px-4 py-3.5 text-sm text-slate-600">{lead.profiles?.nome ?? '—'}</td>
-                      <td className="px-4 py-3.5 text-sm text-slate-500">{formatDateTime(lead.created_at)}</td>
-                      <td className="px-4 py-3.5 text-sm text-slate-500">
-                        {lead.proximo_followup
-                          ? <span className={new Date(lead.proximo_followup).toLocaleDateString('sv') < localDateStr() ? 'text-red-500 font-medium' : ''}>
-                              {new Date(lead.proximo_followup).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                            </span>
-                          : '—'}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <ChevronRight size={15} className="text-slate-300" />
-                      </td>
+                      </th>
+                      <th className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-4 py-3 border-r border-slate-200/90 select-none bg-slate-100">Contato</th>
+                      <th className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-4 py-3 border-r border-slate-200/90 select-none bg-slate-100">Status</th>
+                      <th className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-4 py-3 border-r border-slate-200/90 select-none bg-slate-100">Origem</th>
+                      <th className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-4 py-3 border-r border-slate-200/90 select-none bg-slate-100">Segmento</th>
+                      <th className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-4 py-3 border-r border-slate-200/90 select-none bg-slate-100">Valor</th>
+                      <th className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-4 py-3 border-r border-slate-200/90 select-none bg-slate-100">Responsável</th>
+                      <th className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-4 py-3 border-r border-slate-200/90 select-none bg-slate-100">Criado em</th>
+                      <th className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-4 py-3 border-r border-slate-200/90 select-none bg-slate-100">Próx. Follow-up</th>
+                      <th className="px-3 py-3 w-10 text-center bg-slate-100" />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 text-xs">
+                    {filtered.map((lead, idx) => (
+                      <tr
+                        key={lead.id}
+                        onClick={() => setSelectedLeadId(lead.id)}
+                        className={`transition-colors cursor-pointer group animate-cascade-item ${
+                          selectedIds.has(lead.id)
+                            ? 'bg-brand-50/60 font-semibold'
+                            : idx % 2 === 1
+                            ? 'bg-slate-50/50 hover:bg-brand-50/30'
+                            : 'bg-white hover:bg-brand-50/30'
+                        }`}
+                        style={{ animationDelay: `${Math.min(idx * 25, 350)}ms` }}
+                      >
+                        <td className="px-3.5 py-3 text-center border-r border-slate-200/80" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(lead.id)}
+                            onChange={() => toggleSelect(lead.id)}
+                            className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer accent-emerald-600"
+                          />
+                        </td>
+                        <td className="px-4 py-3 border-r border-slate-200/80">
+                          <div className="flex items-center gap-3">
+                            <LeadAvatar nome={lead.nome} foto_url={lead.foto_url} />
+                            <div className="min-w-0">
+                              <p className="text-slate-950 text-xs font-bold truncate group-hover:text-brand-600 transition">{lead.nome}</p>
+                              <a
+                                href={whatsappLink(lead.whatsapp)}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                className="text-[11px] text-slate-500 hover:text-brand-600 flex items-center gap-1.5 transition font-medium mt-0.5"
+                              >
+                                <WhatsAppIcon size={12} />
+                                {formatWhatsApp(lead.whatsapp)}
+                              </a>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap border-r border-slate-200/80">
+                          <StatusBadge status={lead.status} />
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap border-r border-slate-200/80">
+                          {lead.lead_sources ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-semibold">
+                              <Globe size={11} className="text-slate-400" />
+                              {lead.lead_sources.nome}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap border-r border-slate-200/80">
+                          {lead.lead_segments ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-semibold">
+                              <Tag size={11} className="text-slate-400" />
+                              {lead.lead_segments.nome}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap border-r border-slate-200/80 font-mono font-bold text-slate-900 text-xs">
+                          {lead.valor != null ? formatCurrency(lead.valor) : <span className="text-slate-400 font-sans font-normal">—</span>}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap border-r border-slate-200/80 text-xs font-semibold text-slate-700">
+                          {lead.profiles?.nome ? (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-slate-800 text-[11px]">
+                              <User size={11} className="text-slate-400" />
+                              {lead.profiles.nome}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap border-r border-slate-200/80 text-[11px] text-slate-500 font-mono">
+                          {formatDateTime(lead.created_at)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap border-r border-slate-200/80">
+                          {lead.proximo_followup ? (
+                            (() => {
+                              const isPast = new Date(lead.proximo_followup).toLocaleDateString('sv') < localDateStr()
+                              const isToday = new Date(lead.proximo_followup).toLocaleDateString('sv') === localDateStr()
+                              return (
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
+                                  isPast
+                                    ? 'bg-red-50 text-red-700 border-red-200'
+                                    : isToday
+                                    ? 'bg-brand-50 text-brand-800 border-brand-200'
+                                    : 'bg-slate-50 text-slate-700 border-slate-200'
+                                }`}>
+                                  <CalendarDays size={12} className={isPast ? 'text-red-500' : isToday ? 'text-brand-600' : 'text-slate-400'} />
+                                  {new Date(lead.proximo_followup).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                </span>
+                              )
+                            })()
+                          ) : (
+                            <span className="text-slate-400 text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-center">
+                          <ChevronRight size={15} className="text-slate-300 group-hover:text-slate-600 transition inline-block" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}
@@ -691,11 +683,14 @@ export default function Leads() {
 
       {/* Modal: Novo Lead */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-              <h2 className="text-slate-900 text-base font-semibold">Novo lead</h2>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 transition">
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg max-h-[90vh] overflow-y-auto animate-scale-in">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-slate-50/60">
+              <h2 className="text-slate-950 text-base font-bold">Novo Lead</h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
                 <X size={18} />
               </button>
             </div>
@@ -716,87 +711,87 @@ export default function Leads() {
                 </div>
                 <div>
                   <label className={labelCls}>Status</label>
-                  <InputIcon icon={Flag}>
-                    <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as LeadStatus }))} className={iconSelectCls}>
-                      {allStatuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                    </select>
+                  <CustomSelect
+                    value={form.status}
+                    onChange={val => setForm(f => ({ ...f, status: val as LeadStatus }))}
+                    options={statusOptions.filter(o => o.value !== '')}
+                    placeholder="Selecione o status"
+                    icon={Flag}
+                    buttonClassName="w-full"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Valor estimado</label>
+                  <InputIcon icon={DollarSign}>
+                    <input value={form.valor} onChange={e => setForm(f => ({ ...f, valor: e.target.value }))} placeholder="R$ 0,00" className={iconInputCls} />
                   </InputIcon>
                 </div>
                 <div>
                   <label className={labelCls}>Origem</label>
-                  <InputIcon icon={Globe}>
-                    <select value={form.origem_id} onChange={e => setForm(f => ({ ...f, origem_id: e.target.value }))} className={iconSelectCls}>
-                      <option value="">Selecionar</option>
-                      {sources.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-                    </select>
-                  </InputIcon>
+                  <CustomSelect
+                    value={form.origem_id}
+                    onChange={val => setForm(f => ({ ...f, origem_id: val }))}
+                    options={sourceOptions}
+                    placeholder="Selecione a origem"
+                    icon={Globe}
+                    buttonClassName="w-full"
+                  />
                 </div>
                 <div>
                   <label className={labelCls}>Segmento</label>
-                  <InputIcon icon={Tag}>
-                    <select value={form.segmento_id} onChange={e => setForm(f => ({ ...f, segmento_id: e.target.value }))} className={iconSelectCls}>
-                      <option value="">Selecionar</option>
-                      {segments.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-                    </select>
-                  </InputIcon>
-                </div>
-                <div className="col-span-2">
-                  <label className={labelCls}>Valor (R$)</label>
-                  <InputIcon icon={DollarSign}>
-                    <input
-                      value={form.valor}
-                      onChange={e => setForm(f => ({ ...f, valor: e.target.value }))}
-                      inputMode="decimal"
-                      placeholder="Ex: 1.500,00"
-                      className={iconInputCls}
-                    />
-                  </InputIcon>
-                  <p className="text-xs text-slate-400 mt-1">Valor da proposta/negócio deste lead (opcional)</p>
+                  <CustomSelect
+                    value={form.segmento_id}
+                    onChange={val => setForm(f => ({ ...f, segmento_id: val }))}
+                    options={segmentOptions}
+                    placeholder="Selecione o segmento"
+                    icon={Tag}
+                    buttonClassName="w-full"
+                  />
                 </div>
                 <div className="col-span-2">
                   <label className={labelCls}>Tags</label>
-                  <div className="relative border border-slate-200 rounded-lg p-2 pl-10 flex flex-wrap gap-1.5 focus-within:ring-2 focus-within:ring-emerald-500 min-h-[42px]">
-                    <Tags size={15} className="absolute left-3 top-3 text-slate-400 pointer-events-none" />
-                    {form.tags.map(tag => (
-                      <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full text-xs">
-                        {tag}
-                        <button type="button" onClick={() => removeTag(tag)} className="text-slate-400 hover:text-slate-600 leading-none">×</button>
-                      </span>
-                    ))}
-                    <input
-                      value={tagInput}
-                      onChange={e => setTagInput(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(tagInput) }
-                        if (e.key === 'Backspace' && !tagInput && form.tags.length > 0) removeTag(form.tags[form.tags.length - 1])
-                      }}
-                      placeholder={form.tags.length === 0 ? 'Adicionar tag...' : ''}
-                      className="flex-1 min-w-24 outline-none text-sm text-slate-900 bg-transparent placeholder:text-slate-400"
-                    />
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1">Pressione Enter ou vírgula para adicionar</p>
+                  <InputIcon icon={Tags}>
+                    <input value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(tagInput) } }} placeholder="Pressione Enter para adicionar" className={iconInputCls} />
+                  </InputIcon>
+                  {form.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {form.tags.map(tag => (
+                        <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {tag}
+                          <button type="button" onClick={() => removeTag(tag)} className="hover:text-emerald-900">
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="col-span-2">
-                  <label className={labelCls}>Observação</label>
+                  <label className={labelCls}>Observações</label>
                   <TextareaIcon icon={FileText}>
-                    <textarea value={form.observacao} onChange={e => setForm(f => ({ ...f, observacao: e.target.value }))} rows={3} placeholder="Informações sobre o atendimento..." className={iconTextareaCls} />
+                    <textarea value={form.observacao} onChange={e => setForm(f => ({ ...f, observacao: e.target.value }))} rows={3} placeholder="Anotações sobre o lead..." className={iconTextareaCls} />
                   </TextareaIcon>
                 </div>
               </div>
 
-              {formError && (
-                <div className="bg-red-50 border border-red-100 rounded-lg px-3.5 py-2.5">
-                  <p className="text-red-600 text-sm">{formError}</p>
-                </div>
-              )}
+              {formError && <p className="text-xs text-red-600 font-semibold">{formError}</p>}
 
-              <div className="flex justify-end gap-3 pt-1">
-                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 transition cursor-pointer shadow-2xs select-none"
+                >
+                  <X size={14} className="text-slate-400" />
                   Cancelar
                 </button>
-                <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium transition">
-                  {saving && <Loader2 size={14} className="animate-spin" />}
-                  {saving ? 'Salvando...' : 'Salvar lead'}
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed border border-emerald-700/50 text-white text-xs font-bold transition shadow-2xs cursor-pointer select-none"
+                >
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  {saving ? 'Criando...' : 'Criar Lead'}
                 </button>
               </div>
             </form>

@@ -1,13 +1,18 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import {
   Loader2, X,
   Clock, CheckCircle2, Plus, Send, Trash2, Archive, ArchiveRestore,
-  Flag, Globe, Tag, Tags, DollarSign, FileText, StickyNote, ListChecks, Calendar
+  Flag, Globe, Tag, Tags, DollarSign, FileText, StickyNote, ListChecks, AlertCircle, Pencil, Save, Check
 } from 'lucide-react'
-import { InputIcon, TextareaIcon, iconInputCls, iconSelectCls, iconTextareaCls } from './FieldIcon'
+import { InputIcon, TextareaIcon, iconInputCls, iconTextareaCls } from './FieldIcon'
 import WhatsAppIcon from './WhatsAppIcon'
 import StatusBadge from './StatusBadge'
 import LeadAvatar from './LeadAvatar'
+import CustomSelect from './CustomSelect'
+import CustomDatePicker from './CustomDatePicker'
+import CustomTimePicker from './CustomTimePicker'
+import LeadDrawerSkeleton from './skeletons/LeadDrawerSkeleton'
+import ConfirmModal from './ConfirmModal'
 import { supabase } from '../lib/supabase'
 import {
   allActivityTypes, activityTypeLabel, activityStatusConfig, allLossReasons,
@@ -64,6 +69,19 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
   const [showActivityModal, setShowActivityModal] = useState(false)
   const [activityForm, setActivityForm] = useState({ tipo: 'enviar_mensagem' as ActivityType, descricao: '', data: '', hora: '' })
   const [savingActivity, setSavingActivity] = useState(false)
+
+  const [editActivityForm, setEditActivityForm] = useState<{
+    id: string
+    tipo: ActivityType
+    descricao: string
+    data: string
+    hora: string
+    status: 'pendente' | 'concluida' | 'cancelada'
+  } | null>(null)
+  const [updatingActivity, setUpdatingActivity] = useState(false)
+  const [confirmDeleteActivity, setConfirmDeleteActivity] = useState<LeadActivity | null>(null)
+  const [deletingActivity, setDeletingActivity] = useState(false)
+  const [deleteActivityError, setDeleteActivityError] = useState<string | null>(null)
 
   const [noteText, setNoteText] = useState('')
   const [savingNote, setSavingNote] = useState(false)
@@ -125,6 +143,55 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
     }
   }, [])
 
+  const isDirty = useMemo(() => {
+    if (!lead) return false
+    const origTags = lead.tags ?? []
+    const tagsEqual = formTags.length === origTags.length && formTags.every(t => origTags.includes(t)) && !tagInput.trim()
+
+    const parsedVal = parseCurrency(formValor)
+    const origVal = lead.valor ?? null
+    const valorChanged = parsedVal !== origVal
+
+    let origFollowup = ''
+    if (lead.proximo_followup) {
+      const d = new Date(lead.proximo_followup)
+      const pad = (n: number) => String(n).padStart(2, '0')
+      origFollowup = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    }
+    const followupChanged = (formProximoFollowup || '') !== origFollowup
+
+    const origMotivo = lead.motivo_perda || ''
+    const currentMotivo = formStatus === 'perdido'
+      ? (formMotivoPerda === 'outro' ? formMotivoPerdaOutro.trim() : formMotivoPerda)
+      : ''
+    const motivoChanged = formStatus === 'perdido' ? currentMotivo !== origMotivo : (origMotivo !== '' && formStatus !== lead.status)
+
+    return (
+      formStatus !== lead.status ||
+      (formOrigemId || '') !== (lead.origem_id || '') ||
+      (formSegmentoId || '') !== (lead.segmento_id || '') ||
+      formObservacao.trim() !== (lead.observacao || '').trim() ||
+      valorChanged ||
+      (formResponsavelId || '') !== (lead.responsavel_id || '') ||
+      !tagsEqual ||
+      followupChanged ||
+      motivoChanged
+    )
+  }, [lead, formStatus, formOrigemId, formSegmentoId, formObservacao, formValor, formResponsavelId, formTags, tagInput, formProximoFollowup, formMotivoPerda, formMotivoPerdaOutro])
+
+  const isEditActivityDirty = useMemo(() => {
+    if (!editActivityForm) return false
+    const orig = activities.find(a => a.id === editActivityForm.id)
+    if (!orig) return true
+    return (
+      editActivityForm.tipo !== orig.tipo_atividade ||
+      editActivityForm.status !== orig.status_atividade ||
+      editActivityForm.data !== (orig.data_agendada || '') ||
+      editActivityForm.hora !== (orig.hora_agendada || '') ||
+      editActivityForm.descricao.trim() !== (orig.descricao || '').trim()
+    )
+  }, [editActivityForm, activities])
+
   // Carrega tudo quando leadId muda
   useEffect(() => {
     if (!leadId) {
@@ -180,7 +247,6 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
     setError('')
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
-    const statusChanged = formStatus !== lead.status
 
     // Consolida a tag que está digitada mas ainda não virou chip (sem Enter/vírgula)
     const pending = tagInput.trim()
@@ -204,15 +270,6 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
     }).eq('id', lead.id)
 
     if (updateError) { setError('Erro ao salvar.'); setSaving(false); return }
-
-    if (statusChanged) {
-      await supabase.from('lead_status_history').insert({
-        lead_id: lead.id,
-        status_anterior: lead.status,
-        status_novo: formStatus,
-        alterado_por: user?.id ?? null,
-      })
-    }
 
     await loadLead(lead.id)
     await Promise.all([loadHistory(lead.id), loadActivities(lead.id)])
@@ -298,6 +355,70 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
     await loadActivities(lead.id)
   }
 
+  function handleOpenEditActivity(act: LeadActivity) {
+    setEditActivityForm({
+      id: act.id,
+      tipo: act.tipo_atividade,
+      descricao: act.descricao || '',
+      data: act.data_agendada,
+      hora: act.hora_agendada.slice(0, 5),
+      status: act.status_atividade === 'atrasada' ? 'pendente' : act.status_atividade,
+    })
+  }
+
+  async function handleUpdateActivity(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editActivityForm || !leadId) return
+    setUpdatingActivity(true)
+    setError('')
+
+    const { error: updErr } = await supabase
+      .from('lead_activities')
+      .update({
+        tipo_atividade: editActivityForm.tipo,
+        descricao: editActivityForm.descricao.trim() || null,
+        data_agendada: editActivityForm.data,
+        hora_agendada: editActivityForm.hora,
+        status_atividade: editActivityForm.status,
+        concluido_em: editActivityForm.status === 'concluida' ? new Date().toISOString() : null,
+      })
+      .eq('id', editActivityForm.id)
+
+    if (updErr) {
+      setUpdatingActivity(false)
+      setError('Erro ao atualizar a atividade.')
+      return
+    }
+
+    const proximo = await recalcProximoFollowup(leadId)
+    setFormProximoFollowup(proximo ? proximo.slice(0, 10) : '')
+
+    setUpdatingActivity(false)
+    setEditActivityForm(null)
+    await loadActivities(leadId)
+  }
+
+  async function handleConfirmDeleteActivity() {
+    if (!confirmDeleteActivity || !leadId) return
+    setDeletingActivity(true)
+    setDeleteActivityError(null)
+    try {
+      const { error: delErr } = await supabase.from('lead_activities').delete().eq('id', confirmDeleteActivity.id)
+      if (delErr) throw delErr
+      const proximo = await recalcProximoFollowup(leadId)
+      setFormProximoFollowup(proximo ? proximo.slice(0, 10) : '')
+      await loadActivities(leadId)
+      if (editActivityForm?.id === confirmDeleteActivity.id) {
+        setEditActivityForm(null)
+      }
+      setConfirmDeleteActivity(null)
+    } catch (err: any) {
+      setDeleteActivityError(err?.message || 'Erro ao excluir atividade.')
+    } finally {
+      setDeletingActivity(false)
+    }
+  }
+
   async function handleAddNote(e: React.FormEvent) {
     e.preventDefault()
     if (!noteText.trim() || !lead) return
@@ -336,6 +457,54 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
     { key: 'history', label: 'Histórico', count: history.length },
     { key: 'notes', label: 'Notas', count: notes.length },
   ]
+
+  const statusOptions = useMemo(() => [
+    ...allStatuses.map(s => ({
+      value: s.value,
+      label: s.label,
+      dotColor: s.color_dot || '#94a3b8',
+    })),
+  ], [allStatuses])
+
+  const sourceOptions = useMemo(() => [
+    { value: '', label: 'Selecionar origem' },
+    ...sources.map(s => ({
+      value: s.id,
+      label: s.nome,
+      icon: Globe,
+    })),
+  ], [sources])
+
+  const segmentOptions = useMemo(() => [
+    { value: '', label: 'Selecionar segmento' },
+    ...segments.map(s => ({
+      value: s.id,
+      label: s.nome,
+      icon: Tag,
+    })),
+  ], [segments])
+
+  const lossReasonOptions = useMemo(() => [
+    { value: '', label: 'Selecionar motivo da perda' },
+    ...allLossReasons().map(r => ({
+      value: r.value,
+      label: r.label,
+    })),
+  ], [])
+
+  const activityTypeOptions = useMemo(() => [
+    ...allActivityTypes().map(at => ({
+      value: at.value,
+      label: at.label,
+      icon: ListChecks,
+    })),
+  ], [])
+
+  const activityStatusOptions = useMemo(() => [
+    { value: 'pendente', label: 'Pendente', dotColor: '#f59e0b' },
+    { value: 'concluida', label: 'Concluída', dotColor: '#10b981' },
+    { value: 'cancelada', label: 'Cancelada', dotColor: '#ef4444' },
+  ], [])
 
   return (
     <>
@@ -415,18 +584,16 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center flex-1">
-            <Loader2 size={20} className="text-slate-300 animate-spin" />
-          </div>
+          <LeadDrawerSkeleton />
         ) : !lead ? null : (
-          <>
+          <div className="flex-1 flex flex-col min-h-0 animate-fade-in">
             {/* Tabs */}
-            <div className="flex gap-1 border-b border-slate-100 px-6 shrink-0">
+            <div className="flex gap-1 border-b border-slate-100 px-6 shrink-0 bg-white">
               {tabs.map(tab => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition ${
+                  className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition cursor-pointer ${
                     activeTab === tab.key
                       ? 'border-emerald-500 text-emerald-600'
                       : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -451,11 +618,14 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className={labelCls}>Status</label>
-                      <InputIcon icon={Flag}>
-                        <select value={formStatus} onChange={e => setFormStatus(e.target.value as LeadStatus)} className={iconSelectCls}>
-                          {allStatuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                        </select>
-                      </InputIcon>
+                      <CustomSelect
+                        value={formStatus}
+                        onChange={val => setFormStatus(val as LeadStatus)}
+                        options={statusOptions}
+                        placeholder="Selecione o status"
+                        icon={Flag}
+                        buttonClassName="w-full"
+                      />
                     </div>
                     <div>
                       <label className={labelCls}>Responsável</label>
@@ -467,14 +637,14 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
                       <div className="col-span-2 bg-red-50/50 border border-red-100 rounded-lg p-3.5 space-y-2.5">
                         <div>
                           <label className={labelCls}>Motivo da perda</label>
-                          <select
+                          <CustomSelect
                             value={formMotivoPerda}
-                            onChange={e => setFormMotivoPerda(e.target.value)}
-                            className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-                          >
-                            <option value="">Selecionar motivo</option>
-                            {allLossReasons().map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                          </select>
+                            onChange={setFormMotivoPerda}
+                            options={lossReasonOptions}
+                            placeholder="Selecionar motivo"
+                            icon={AlertCircle}
+                            buttonClassName="w-full"
+                          />
                         </div>
                         {formMotivoPerda === 'outro' && (
                           <input
@@ -488,21 +658,25 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
                     )}
                     <div>
                       <label className={labelCls}>Origem</label>
-                      <InputIcon icon={Globe}>
-                        <select value={formOrigemId} onChange={e => setFormOrigemId(e.target.value)} className={iconSelectCls}>
-                          <option value="">Selecionar</option>
-                          {sources.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-                        </select>
-                      </InputIcon>
+                      <CustomSelect
+                        value={formOrigemId}
+                        onChange={setFormOrigemId}
+                        options={sourceOptions}
+                        placeholder="Selecionar"
+                        icon={Globe}
+                        buttonClassName="w-full"
+                      />
                     </div>
                     <div>
                       <label className={labelCls}>Segmento</label>
-                      <InputIcon icon={Tag}>
-                        <select value={formSegmentoId} onChange={e => setFormSegmentoId(e.target.value)} className={iconSelectCls}>
-                          <option value="">Selecionar</option>
-                          {segments.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-                        </select>
-                      </InputIcon>
+                      <CustomSelect
+                        value={formSegmentoId}
+                        onChange={setFormSegmentoId}
+                        options={segmentOptions}
+                        placeholder="Selecionar"
+                        icon={Tag}
+                        buttonClassName="w-full"
+                      />
                     </div>
                     <div className="col-span-2">
                       <label className={labelCls}>Valor (R$)</label>
@@ -555,9 +729,13 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
 
                   <div className="flex justify-between items-center pt-1">
                     <p className="text-xs text-slate-400">Criado em {formatDateTime(lead.created_at)}</p>
-                    <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium transition">
-                      {saving && <Loader2 size={14} className="animate-spin" />}
-                      {saving ? 'Salvando...' : 'Salvar alterações'}
+                    <button
+                      onClick={handleSave}
+                      disabled={saving || !isDirty}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed border border-emerald-700/50 text-white text-xs font-bold transition shadow-2xs cursor-pointer select-none"
+                    >
+                      {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                      {saving ? 'Salvando...' : 'Salvar Alterações'}
                     </button>
                   </div>
                 </div>
@@ -569,10 +747,10 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
                   <div className="flex justify-end mb-4">
                     <button
                       onClick={() => setShowActivityModal(true)}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium transition"
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold transition shadow-2xs border border-emerald-700/50 cursor-pointer select-none"
                     >
-                      <Plus size={15} />
-                      Nova atividade
+                      <Plus size={14} />
+                      Nova Atividade
                     </button>
                   </div>
                   {activities.length === 0 ? (
@@ -583,7 +761,7 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
                   ) : (
                     <div className="space-y-2">
                       {activities.map(act => {
-                        const overdue = act.status_atividade === 'pendente' && isOverdue(act.data_agendada)
+                        const overdue = act.status_atividade === 'pendente' && isOverdue(act.data_agendada, act.hora_agendada)
                         const effectiveStatus = overdue ? 'atrasada' : act.status_atividade
                         const cfg = activityStatusConfig(effectiveStatus)
                         return (
@@ -599,20 +777,36 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
                                 {act.profiles && ` · ${act.profiles.nome}`}
                               </p>
                             </div>
-                            {act.status_atividade === 'pendente' && (
+                            <div className="flex items-center gap-1.5 shrink-0 ml-3">
                               <button
-                                onClick={() => handleMarkActivityDone(act.id)}
-                                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-emerald-600 transition px-3 py-1.5 rounded-lg hover:bg-emerald-50"
+                                onClick={() => handleOpenEditActivity(act)}
+                                className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-white rounded-lg transition border border-transparent hover:border-slate-200 shadow-2xs"
+                                title="Editar atividade"
                               >
-                                <CheckCircle2 size={14} />
-                                Concluir
+                                <Pencil size={14} />
                               </button>
-                            )}
-                            {act.status_atividade === 'concluida' && (
-                              <span className="text-xs text-slate-400">
-                                {act.concluido_em ? formatDateTime(act.concluido_em) : 'Concluída'}
-                              </span>
-                            )}
+                              <button
+                                onClick={() => setConfirmDeleteActivity(act)}
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-white rounded-lg transition border border-transparent hover:border-slate-200 shadow-2xs"
+                                title="Excluir atividade"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                              {act.status_atividade === 'pendente' && (
+                                <button
+                                  onClick={() => handleMarkActivityDone(act.id)}
+                                  className="flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-100/80 hover:bg-emerald-600 hover:text-white transition px-2.5 py-1.5 rounded-lg border border-emerald-200 shadow-2xs cursor-pointer active:scale-95 ml-1"
+                                >
+                                  <CheckCircle2 size={13} />
+                                  Concluir
+                                </button>
+                              )}
+                              {act.status_atividade === 'concluida' && (
+                                <span className="text-xs text-slate-400 ml-1 font-medium">
+                                  {act.concluido_em ? formatDateTime(act.concluido_em) : 'Concluída'}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         )
                       })}
@@ -672,9 +866,13 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
                       />
                     </TextareaIcon>
                     <div className="flex justify-end">
-                      <button type="submit" disabled={savingNote || !noteText.trim()} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium transition">
+                      <button
+                        type="submit"
+                        disabled={savingNote || !noteText.trim()}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed border border-emerald-700/50 text-white text-xs font-bold transition shadow-2xs cursor-pointer select-none"
+                      >
                         {savingNote ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                        {savingNote ? 'Salvando...' : 'Adicionar nota'}
+                        {savingNote ? 'Salvando...' : 'Adicionar Nota'}
                       </button>
                     </div>
                   </form>
@@ -697,41 +895,42 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
                 </div>
               )}
             </div>
-          </>
+          </div>
         )}
       </div>
 
       {/* Modal: Confirmar exclusão */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
-            <div className="px-6 py-5 border-b border-slate-100">
-              <h2 className="text-slate-900 text-base font-semibold">Excluir lead</h2>
-              <p className="text-slate-500 text-sm mt-1">
-                Tem certeza que deseja excluir <span className="font-medium text-slate-700">{lead?.nome}</span>? Esta ação não pode ser desfeita.
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center z-[60] p-4 animate-fade-in">
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-sm overflow-hidden animate-scale-in">
+            <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/60">
+              <h2 className="text-slate-950 text-base font-bold">Excluir Lead</h2>
+              <p className="text-slate-500 text-xs mt-1 leading-relaxed">
+                Tem certeza que deseja excluir <span className="font-semibold text-slate-800">{lead?.nome}</span>? Esta ação não pode ser desfeita.
               </p>
             </div>
             {error && (
-              <div className="mx-6 mt-4 px-3.5 py-2.5 rounded-lg bg-red-50 border border-red-100">
-                <p className="text-red-600 text-sm">{error}</p>
+              <div className="mx-6 mt-4 px-3.5 py-2.5 rounded-lg bg-red-50 border border-red-200">
+                <p className="text-red-600 text-xs font-semibold">{error}</p>
               </div>
             )}
-            <div className="flex justify-end gap-3 px-6 py-4">
+            <div className="flex justify-end gap-2.5 px-6 py-4 border-t border-slate-100 bg-slate-50/40">
               <button
                 type="button"
                 onClick={() => { setShowDeleteConfirm(false); setError('') }}
                 disabled={deleting}
-                className="px-4 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 transition cursor-pointer shadow-2xs select-none disabled:opacity-50"
               >
+                <X size={14} className="text-slate-400" />
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={handleDelete}
                 disabled={deleting}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white text-sm font-medium transition"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed border border-red-700/50 text-white text-xs font-bold transition shadow-2xs cursor-pointer select-none"
               >
-                {deleting && <Loader2 size={14} className="animate-spin" />}
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                 {deleting ? 'Excluindo...' : 'Excluir'}
               </button>
             </div>
@@ -742,7 +941,7 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
       {/* Modal: Nova atividade */}
       {showActivityModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
               <h2 className="text-slate-900 text-base font-semibold">Nova atividade</h2>
               <button onClick={() => setShowActivityModal(false)} className="text-slate-400 hover:text-slate-600 transition">
@@ -752,24 +951,31 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
             <form onSubmit={handleCreateActivity} className="px-6 py-5 space-y-4">
               <div>
                 <label className={labelCls}>Tipo de atividade</label>
-                <InputIcon icon={ListChecks}>
-                  <select value={activityForm.tipo} onChange={e => setActivityForm(f => ({ ...f, tipo: e.target.value as ActivityType }))} className={iconSelectCls}>
-                    {allActivityTypes().map(at => <option key={at.value} value={at.value}>{at.label}</option>)}
-                  </select>
-                </InputIcon>
+                <CustomSelect
+                  value={activityForm.tipo}
+                  onChange={val => setActivityForm(f => ({ ...f, tipo: val as ActivityType }))}
+                  options={activityTypeOptions}
+                  placeholder="Selecione a atividade"
+                  icon={ListChecks}
+                  buttonClassName="w-full"
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={labelCls}>Data *</label>
-                  <InputIcon icon={Calendar}>
-                    <input type="date" value={activityForm.data} onChange={e => setActivityForm(f => ({ ...f, data: e.target.value }))} required className={iconInputCls} />
-                  </InputIcon>
+                  <CustomDatePicker
+                    value={activityForm.data}
+                    onChange={val => setActivityForm(f => ({ ...f, data: val }))}
+                    placeholder="Selecione a data"
+                  />
                 </div>
                 <div>
                   <label className={labelCls}>Hora *</label>
-                  <InputIcon icon={Clock}>
-                    <input type="time" value={activityForm.hora} onChange={e => setActivityForm(f => ({ ...f, hora: e.target.value }))} required className={iconInputCls} />
-                  </InputIcon>
+                  <CustomTimePicker
+                    value={activityForm.hora}
+                    onChange={val => setActivityForm(f => ({ ...f, hora: val }))}
+                    placeholder="Selecione o horário"
+                  />
                 </div>
               </div>
               <div>
@@ -778,16 +984,151 @@ export default function LeadDrawer({ leadId, onClose, onSaved }: LeadDrawerProps
                   <textarea value={activityForm.descricao} onChange={e => setActivityForm(f => ({ ...f, descricao: e.target.value }))} rows={2} placeholder="Detalhes da atividade..." className={iconTextareaCls} />
                 </TextareaIcon>
               </div>
-              <div className="flex justify-end gap-3 pt-1">
-                <button type="button" onClick={() => setShowActivityModal(false)} className="px-4 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition">Cancelar</button>
-                <button type="submit" disabled={savingActivity} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium transition">
-                  {savingActivity && <Loader2 size={14} className="animate-spin" />}
+              <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowActivityModal(false)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 transition cursor-pointer shadow-2xs select-none"
+                >
+                  <X size={14} className="text-slate-400" />
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingActivity}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed border border-emerald-700/50 text-white text-xs font-bold transition shadow-2xs cursor-pointer select-none"
+                >
+                  {savingActivity ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                   {savingActivity ? 'Salvando...' : 'Agendar'}
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* Modal: Editar atividade */}
+      {editActivityForm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <h2 className="text-slate-900 text-base font-semibold">Editar atividade</h2>
+              <button onClick={() => setEditActivityForm(null)} className="text-slate-400 hover:text-slate-600 transition">
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateActivity} className="px-6 py-5 space-y-4">
+              <div>
+                <label className={labelCls}>Tipo de atividade</label>
+                <CustomSelect
+                  value={editActivityForm.tipo}
+                  onChange={val => setEditActivityForm(f => f ? ({ ...f, tipo: val as ActivityType }) : null)}
+                  options={activityTypeOptions}
+                  placeholder="Selecione a atividade"
+                  icon={ListChecks}
+                  buttonClassName="w-full"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Status</label>
+                <CustomSelect
+                  value={editActivityForm.status}
+                  onChange={val => setEditActivityForm(f => f ? ({ ...f, status: val as any }) : null)}
+                  options={activityStatusOptions}
+                  placeholder="Status da atividade"
+                  icon={CheckCircle2}
+                  buttonClassName="w-full"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>Data *</label>
+                  <CustomDatePicker
+                    value={editActivityForm.data}
+                    onChange={val => setEditActivityForm(f => f ? ({ ...f, data: val }) : null)}
+                    placeholder="Selecione a data"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Hora *</label>
+                  <CustomTimePicker
+                    value={editActivityForm.hora}
+                    onChange={val => setEditActivityForm(f => f ? ({ ...f, hora: val }) : null)}
+                    placeholder="Selecione o horário"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Descrição</label>
+                <TextareaIcon icon={FileText}>
+                  <textarea
+                    value={editActivityForm.descricao}
+                    onChange={e => setEditActivityForm(f => f ? ({ ...f, descricao: e.target.value }) : null)}
+                    rows={2}
+                    placeholder="Detalhes da atividade..."
+                    className={iconTextareaCls}
+                  />
+                </TextareaIcon>
+              </div>
+              <div className="flex justify-between items-center gap-3 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const act = activities.find(a => a.id === editActivityForm.id)
+                    if (act) setConfirmDeleteActivity(act)
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-red-600 hover:bg-red-50 text-xs font-bold transition cursor-pointer select-none"
+                >
+                  <Trash2 size={14} />
+                  Excluir
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditActivityForm(null)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 transition cursor-pointer shadow-2xs select-none"
+                  >
+                    <X size={14} className="text-slate-400" />
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={updatingActivity || !isEditActivityDirty || !editActivityForm.data || !editActivityForm.hora}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed border border-emerald-700/50 text-white text-xs font-bold transition shadow-2xs cursor-pointer select-none"
+                  >
+                    {updatingActivity ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                    {updatingActivity ? 'Salvando...' : 'Salvar Alterações'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação: Excluir atividade */}
+      {confirmDeleteActivity && (
+        <ConfirmModal
+          title="Excluir Atividade"
+          description={
+            <>
+              Tem certeza que deseja excluir esta atividade de{' '}
+              <span className="font-semibold text-slate-800">
+                {activityTypeLabel(confirmDeleteActivity.tipo_atividade)}
+              </span>
+              {lead?.nome && (
+                <> do lead <span className="font-semibold text-slate-800">{lead.nome}</span></>
+              )}? Esta ação não pode ser desfeita.
+            </>
+          }
+          error={deleteActivityError}
+          loading={deletingActivity}
+          onCancel={() => {
+            setConfirmDeleteActivity(null)
+            setDeleteActivityError(null)
+          }}
+          onConfirm={handleConfirmDeleteActivity}
+        />
       )}
     </>
   )
