@@ -25,7 +25,11 @@ var CRM_SESSION_KEY = 'crm_4u_session';
 
 // Origens autorizadas a sincronizar a sessão (CRM real + dev). Bloqueia qualquer
 // outro site (ex.: *.vercel.app) de enviar SYNC_SESSION e limpar/forjar a sessão.
-var ALLOWED_SESSION_ORIGINS = ['http://localhost:5173', 'https://crm-4uconnect.vercel.app'];
+var ALLOWED_SESSION_ORIGINS = [
+  'http://localhost:5173',
+  'https://crm-4uconnect.vercel.app',
+  'https://connect-crm.vercel.app',
+];
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Ponte de sessão: o script do CRM envia a sessão do Supabase para cá

@@ -5,8 +5,8 @@
 ## Estado atual
 
 - O `crm-web` de produção permanece inalterado por esta correção.
-- A extensão publicada continua na versão 1.0.0.
-- A branch local `fix/whatsapp-contact-save-v1.0.1` contém a correção da extensão e sua documentação; a criação de contato foi validada em campo e o ajuste visual final da versão 1.0.2 aguarda reteste.
+- A versão local da extensão passa a ser 1.0.3; esta correção ainda não foi enviada ao GitHub nem à Chrome Web Store pelo Codex.
+- A branch local `fix/whatsapp-contact-save-v1.0.2` contém a correção da extensão e sua documentação; a criação de contato foi validada em campo.
 
 ## Gotcha: salvamento de contatos no WhatsApp Web
 
@@ -21,6 +21,12 @@
 - Avisos de `PerformanceObserver`, CSP do `pdf-viewer`, CORS para `dit.whatsapp.net`, `ErrorUtils` e arquivos com nomes hash pertencem ao próprio WhatsApp Web e não indicam falha da extensão.
 - O botão **Erros** de `chrome://extensions` pode manter ocorrências históricas. Para atribuir um erro à extensão, conferir a mensagem completa e se a origem é `chrome-extension://.../logger.js` ou `content.js`, não apenas uma linha destacada no visualizador.
 
+## Gotcha: domínio e ponte de sessão
+
+- O CRM é acessado atualmente por `connect-crm.vercel.app`, mas a extensão 1.0.2 injetava `session-bridge.js` somente no alias antigo `crm-4uconnect.vercel.app`.
+- A consequência era a tela **Acesso necessário** no WhatsApp mesmo com o usuário autenticado no CRM Web.
+- A versão 1.0.3 aceita os dois aliases no `manifest.json` e no `background.js`; links abertos pela extensão usam `connect-crm.vercel.app` como domínio principal.
+
 ## Próximo passo
 
-- [ ] Recarregar a extensão local, confirmar que o contato continua sendo criado e que o drawer nativo fica coberto antes de publicar a versão 1.0.2.
+- [ ] Recarregar a extensão local e as abas do CRM/WhatsApp; confirmar a sincronização automática da sessão, o cadastro do contato e a cobertura do drawer antes de publicar a versão 1.0.3.

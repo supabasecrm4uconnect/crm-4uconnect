@@ -23,3 +23,27 @@ manual pelo botão lateral.
 - O fluxo funcional e os seletores do formulário nativo permanecem inalterados.
 - Para acessar um drawer do WhatsApp enquanto a sidebar estiver aberta, o usuário
   deve recolher o CRM manualmente.
+
+## ADR-002 — Compatibilidade da sessão com os dois aliases do CRM
+
+- **Data:** 04/09/2026
+- **Status:** Aceita
+
+### Contexto
+
+O painel de produção responde por `crm-4uconnect.vercel.app` e
+`connect-crm.vercel.app`. A ponte de sessão da extensão estava autorizada apenas
+no primeiro endereço, enquanto o acesso atual ocorre pelo segundo.
+
+### Decisão
+
+Manter os dois aliases explicitamente autorizados em `manifest.json` e
+`background.js`, usando `connect-crm.vercel.app` como destino principal dos links
+da extensão. Não será usado um curinga `*.vercel.app`.
+
+### Consequências
+
+- Usuários autenticados em qualquer um dos aliases podem sincronizar a sessão.
+- Sites Vercel não relacionados continuam impedidos de gravar ou limpar a sessão.
+- Toda futura mudança de domínio deve atualizar conjuntamente `manifest.json`,
+  `background.js` e `content.js`.

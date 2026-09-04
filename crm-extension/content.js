@@ -15,11 +15,9 @@
   const SUPABASE_URL = 'https://cimehhzkwgiwgfnkeauo.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpbWVoaHprd2dpd2dmbmtlYXVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1Nzk0NTEsImV4cCI6MjA5NzE1NTQ1MX0.lMAp7uK7_H3jRqGksZGVVH72bxyOISIOAefTPAlLxJI';
 
-  // ⚠️ PRODUÇÃO: antes de entregar a extensão à atendente, troque o valor abaixo
-  // pelo domínio real do CRM na Vercel. Ex.: 'https://crm.4uconnect.com.br'
-  // (sem barra no final). Em desenvolvimento, mantenha 'http://localhost:5173'.
-  // Este é o ÚNICO lugar do código que precisa mudar para apontar à produção.
-  const CRM_URL = 'https://crm-4uconnect.vercel.app';
+  // Domínio principal do CRM. Qualquer alteração deve ser sincronizada também
+  // no manifest.json e em ALLOWED_SESSION_ORIGINS do background.js.
+  const CRM_URL = 'https://connect-crm.vercel.app';
 
   const STORAGE_KEY = 'crm_4u_session';
 
