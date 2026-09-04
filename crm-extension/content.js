@@ -317,33 +317,30 @@
       escapeHtml(cfg.label) + '</span>';
   }
 
-  function statusOptions(selected) {
-    var list = state.statuses.length
-      ? state.statuses.map(function (s) { return { value: s.value, label: s.label }; })
-      : [{ value: 'novo_lead', label: 'Novo lead' }];
-    return list.map(function (s) {
-      return '<option value="' + s.value + '"' + (s.value === selected ? ' selected' : '') + '>' + escapeHtml(s.label) + '</option>';
-    }).join('');
+  function statusSelectItems() {
+    return state.statuses.length
+      ? state.statuses.map(function (s) {
+        return { value: s.value, label: s.label, dotColor: s.color_dot || '#94a3b8' };
+      })
+      : [{ value: 'novo_lead', label: 'Novo lead', dotColor: '#10b981' }];
   }
 
-  function sourceOptions(sources, selected) {
-    var opts = (sources || []).map(function (s) {
-      return '<option value="' + s.id + '"' + (s.id === selected ? ' selected' : '') + '>' + escapeHtml(s.nome) + '</option>';
-    }).join('');
-    return '<option value="">Selecionar</option>' + opts;
+  function sourceSelectItems(sources) {
+    return [{ value: '', label: 'Selecionar' }].concat((sources || []).map(function (s) {
+      return { value: s.id, label: s.nome };
+    }));
   }
 
-  function segmentOptions(segments, selected) {
-    var opts = (segments || []).map(function (s) {
-      return '<option value="' + s.id + '"' + (s.id === selected ? ' selected' : '') + '>' + escapeHtml(s.nome) + '</option>';
-    }).join('');
-    return '<option value="">Selecionar</option>' + opts;
+  function segmentSelectItems(segments) {
+    return [{ value: '', label: 'Selecionar' }].concat((segments || []).map(function (s) {
+      return { value: s.id, label: s.nome };
+    }));
   }
 
-  function activityTypeOptions(selected) {
+  function activityTypeSelectItems() {
     return ACTIVITY_TYPES.map(function (t) {
-      return '<option value="' + t.value + '"' + (t.value === selected ? ' selected' : '') + '>' + escapeHtml(t.label) + '</option>';
-    }).join('');
+      return { value: t.value, label: t.label };
+    });
   }
 
   // Ícones (SVG inline, estilo lucide) para colocar dentro dos campos
@@ -370,6 +367,288 @@
   function fieldIcon(label, icon, controlHtml, top) {
     return '<div class="crm-field"><label class="crm-label">' + label + '</label>'
       + '<div class="crm-input-wrap' + (top ? ' crm-wrap-top' : '') + '">' + icon + controlHtml + '</div></div>';
+  }
+
+  var CONTROL_CHEVRON = '<svg class="crm-control-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+  var CONTROL_CHECK = '<svg class="crm-custom-select-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>';
+  var CALENDAR_MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  var CALENDAR_WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+  function normalizeControlValue(value) {
+    return value === null || value === undefined ? '' : String(value);
+  }
+
+  function customSelectField(label, icon, id, value, items) {
+    var selectedValue = normalizeControlValue(value);
+    var safeItems = Array.isArray(items) ? items : [];
+    var selectedItem = safeItems.find(function (item) {
+      return normalizeControlValue(item.value) === selectedValue;
+    }) || safeItems[0] || { value: '', label: 'Selecionar' };
+    var selectedDot = selectedItem.dotColor || '';
+
+    var nativeOptions = safeItems.map(function (item) {
+      var itemValue = normalizeControlValue(item.value);
+      return '<option value="' + escapeHtml(itemValue) + '"' + (itemValue === selectedValue ? ' selected' : '') + '>' + escapeHtml(item.label) + '</option>';
+    }).join('');
+
+    var options = safeItems.map(function (item) {
+      var itemValue = normalizeControlValue(item.value);
+      var isSelected = itemValue === selectedValue;
+      var dotColor = item.dotColor || '';
+      return '<button type="button" class="crm-custom-select-option' + (isSelected ? ' is-selected' : '') + '" role="option" aria-selected="' + (isSelected ? 'true' : 'false') + '" data-select-value="' + escapeHtml(itemValue) + '" data-select-label="' + escapeHtml(item.label) + '" data-dot-color="' + escapeHtml(dotColor) + '">' +
+        '<span class="crm-custom-select-option-content">' +
+          (dotColor ? '<span class="crm-custom-select-option-dot" style="background:' + escapeHtml(dotColor) + '"></span>' : '') +
+          '<span>' + escapeHtml(item.label) + '</span>' +
+        '</span>' + CONTROL_CHECK + '</button>';
+    }).join('');
+
+    return '<div class="crm-field">' +
+      '<label class="crm-label" id="' + id + '-label">' + escapeHtml(label) + '</label>' +
+      '<div class="crm-popover-control crm-custom-select" data-popover-height="244">' +
+        '<select id="' + id + '" class="crm-native-control" tabindex="-1" aria-hidden="true">' + nativeOptions + '</select>' +
+        '<button type="button" class="crm-custom-select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="' + id + '-label ' + id + '-display">' +
+          '<span class="crm-custom-select-trigger-content">' + icon +
+            '<span class="crm-custom-select-dot"' + (selectedDot ? ' style="background:' + escapeHtml(selectedDot) + '"' : ' hidden') + '></span>' +
+            '<span class="crm-custom-select-display" id="' + id + '-display">' + escapeHtml(selectedItem.label) + '</span>' +
+          '</span>' + CONTROL_CHEVRON +
+        '</button>' +
+        '<div class="crm-custom-select-menu" role="listbox" aria-labelledby="' + id + '-label" hidden>' + options + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function parseLocalDate(value) {
+    var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalizeControlValue(value));
+    if (!match) return null;
+    var year = Number(match[1]);
+    var month = Number(match[2]) - 1;
+    var day = Number(match[3]);
+    var date = new Date(year, month, day);
+    if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
+    return date;
+  }
+
+  function localDateValue(date) {
+    return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+  }
+
+  function customDateLabel(value) {
+    var date = parseLocalDate(value);
+    if (!date) return 'Selecionar data...';
+    if (localDateValue(date) === todayLocalStr()) return 'Hoje';
+    return String(date.getDate()).padStart(2, '0') + '/' + String(date.getMonth() + 1).padStart(2, '0') + '/' + date.getFullYear();
+  }
+
+  function calendarHtml(viewYear, viewMonth, selectedValue) {
+    var todayValue = localDateValue(new Date());
+    var firstDay = new Date(viewYear, viewMonth, 1).getDay();
+    var daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    var daysInPreviousMonth = new Date(viewYear, viewMonth, 0).getDate();
+    var days = [];
+
+    CALENDAR_WEEKDAYS.forEach(function (weekday) {
+      days.push('<div class="crm-calendar-weekday">' + weekday + '</div>');
+    });
+
+    for (var index = 0; index < 42; index += 1) {
+      var dayNumber;
+      var cellMonth = viewMonth;
+      var inCurrentMonth = true;
+
+      if (index < firstDay) {
+        dayNumber = daysInPreviousMonth - firstDay + index + 1;
+        cellMonth -= 1;
+        inCurrentMonth = false;
+      } else if (index >= firstDay + daysInMonth) {
+        dayNumber = index - firstDay - daysInMonth + 1;
+        cellMonth += 1;
+        inCurrentMonth = false;
+      } else {
+        dayNumber = index - firstDay + 1;
+      }
+
+      var cellDate = new Date(viewYear, cellMonth, dayNumber);
+      var dateValue = localDateValue(cellDate);
+      var isSelected = dateValue === selectedValue;
+      var isToday = dateValue === todayValue;
+      var classes = 'crm-calendar-day' + (!inCurrentMonth ? ' is-outside' : '') + (isToday ? ' is-today' : '') + (isSelected ? ' is-selected' : '');
+
+      days.push('<button type="button" class="' + classes + '" data-calendar-date="' + dateValue + '" aria-label="' + String(cellDate.getDate()).padStart(2, '0') + '/' + String(cellDate.getMonth() + 1).padStart(2, '0') + '/' + cellDate.getFullYear() + '"' + (isSelected ? ' aria-current="date"' : '') + '>' +
+        '<span>' + dayNumber + '</span>' + (isToday && !isSelected ? '<span class="crm-calendar-today-dot"></span>' : '') + '</button>');
+    }
+
+    return '<div class="crm-calendar-header">' +
+        '<div class="crm-calendar-month">' + CALENDAR_MONTHS[viewMonth] + ' <span>' + viewYear + '</span></div>' +
+        '<div class="crm-calendar-navigation">' +
+          '<button type="button" class="crm-calendar-nav" data-calendar-nav="-1" aria-label="Mês anterior">' + svgIcon('<path d="m15 18-6-6 6-6"/>') + '</button>' +
+          '<button type="button" class="crm-calendar-nav" data-calendar-nav="1" aria-label="Próximo mês">' + svgIcon('<path d="m9 18 6-6-6-6"/>') + '</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="crm-calendar-grid">' + days.join('') + '</div>' +
+      '<div class="crm-calendar-footer">' +
+        '<button type="button" class="crm-calendar-action" data-calendar-action="clear">Limpar</button>' +
+        '<button type="button" class="crm-calendar-action is-primary" data-calendar-action="today">Hoje</button>' +
+      '</div>';
+  }
+
+  function customDateField(label, id, value) {
+    var selectedValue = normalizeControlValue(value);
+    var selectedDate = parseLocalDate(selectedValue);
+    var viewDate = selectedDate || new Date();
+
+    return '<div class="crm-field crm-followup-date-field">' +
+      '<label class="crm-label" id="' + id + '-label">' + escapeHtml(label) + '</label>' +
+      '<div class="crm-popover-control crm-date-picker' + (selectedDate ? ' crm-date-picker-has-value' : '') + '" data-selected-date="' + escapeHtml(selectedValue) + '" data-view-year="' + viewDate.getFullYear() + '" data-view-month="' + viewDate.getMonth() + '" data-popover-height="352">' +
+        '<input type="hidden" id="' + id + '" value="' + escapeHtml(selectedValue) + '">' +
+        '<button type="button" class="crm-date-picker-trigger" aria-haspopup="dialog" aria-expanded="false" aria-labelledby="' + id + '-label ' + id + '-display">' +
+          '<span class="crm-date-picker-trigger-content">' + ICON.calendar + '<span class="crm-date-picker-display" id="' + id + '-display">' + customDateLabel(selectedValue) + '</span></span>' + CONTROL_CHEVRON +
+        '</button>' +
+        '<div class="crm-date-picker-menu" role="dialog" aria-label="Selecionar data" hidden>' + calendarHtml(viewDate.getFullYear(), viewDate.getMonth(), selectedValue) + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function closeCustomPopovers(root, except) {
+    root.querySelectorAll('.crm-popover-control.is-open').forEach(function (control) {
+      if (control === except) return;
+      control.classList.remove('is-open', 'crm-popover-up');
+      var menu = control.querySelector('.crm-custom-select-menu, .crm-date-picker-menu');
+      var trigger = control.querySelector('.crm-custom-select-trigger, .crm-date-picker-trigger');
+      if (menu) menu.hidden = true;
+      if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  function toggleCustomPopover(root, control) {
+    if (!control) return;
+    var menu = control.querySelector('.crm-custom-select-menu, .crm-date-picker-menu');
+    var trigger = control.querySelector('.crm-custom-select-trigger, .crm-date-picker-trigger');
+    if (!menu || !trigger) return;
+    var shouldOpen = menu.hidden;
+    closeCustomPopovers(root, shouldOpen ? control : null);
+
+    if (shouldOpen) {
+      var controlRect = control.getBoundingClientRect();
+      var viewport = control.closest('.crm-content') || root;
+      var rootRect = viewport.getBoundingClientRect();
+      var expectedHeight = Number(control.getAttribute('data-popover-height')) || 244;
+      var roomBelow = rootRect.bottom - controlRect.bottom;
+      var roomAbove = controlRect.top - rootRect.top;
+      control.classList.toggle('crm-popover-up', roomBelow < expectedHeight && roomAbove > roomBelow);
+    }
+
+    control.classList.toggle('is-open', shouldOpen);
+    menu.hidden = !shouldOpen;
+    trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+  }
+
+  function refreshCalendar(control) {
+    var menu = control.querySelector('.crm-date-picker-menu');
+    if (!menu) return;
+    menu.innerHTML = calendarHtml(Number(control.getAttribute('data-view-year')), Number(control.getAttribute('data-view-month')), control.getAttribute('data-selected-date') || '');
+  }
+
+  function updateCustomDate(control, value) {
+    var normalizedValue = normalizeControlValue(value);
+    var date = parseLocalDate(normalizedValue);
+    var input = control.querySelector('input[type="hidden"]');
+    var display = control.querySelector('.crm-date-picker-display');
+    if (!input || !display) return;
+
+    input.value = normalizedValue;
+    control.setAttribute('data-selected-date', normalizedValue);
+    control.classList.toggle('crm-date-picker-has-value', Boolean(date));
+    display.textContent = customDateLabel(normalizedValue);
+    if (date) {
+      control.setAttribute('data-view-year', String(date.getFullYear()));
+      control.setAttribute('data-view-month', String(date.getMonth()));
+    }
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function bindCustomControls(root) {
+    root.addEventListener('click', function (event) {
+      var target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+
+      var selectOption = target.closest('[data-select-value]');
+      if (selectOption && root.contains(selectOption)) {
+        event.preventDefault();
+        var selectControl = selectOption.closest('.crm-custom-select');
+        var select = selectControl && selectControl.querySelector('.crm-native-control');
+        if (!selectControl || !select) return;
+
+        var selectedValue = selectOption.getAttribute('data-select-value') || '';
+        var selectedLabel = selectOption.getAttribute('data-select-label') || 'Selecionar';
+        var selectedDot = selectOption.getAttribute('data-dot-color') || '';
+        select.value = selectedValue;
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+
+        var display = selectControl.querySelector('.crm-custom-select-display');
+        var dot = selectControl.querySelector('.crm-custom-select-dot');
+        if (display) display.textContent = selectedLabel;
+        if (dot) {
+          dot.hidden = !selectedDot;
+          dot.style.background = selectedDot;
+        }
+        selectControl.querySelectorAll('.crm-custom-select-option').forEach(function (option) {
+          var isSelected = option === selectOption;
+          option.classList.toggle('is-selected', isSelected);
+          option.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+        });
+        closeCustomPopovers(root);
+        return;
+      }
+
+      var selectTrigger = target.closest('.crm-custom-select-trigger');
+      if (selectTrigger && root.contains(selectTrigger)) {
+        event.preventDefault();
+        toggleCustomPopover(root, selectTrigger.closest('.crm-custom-select'));
+        return;
+      }
+
+      var calendarNav = target.closest('[data-calendar-nav]');
+      if (calendarNav && root.contains(calendarNav)) {
+        event.preventDefault();
+        var navControl = calendarNav.closest('.crm-date-picker');
+        var viewDate = new Date(Number(navControl.getAttribute('data-view-year')), Number(navControl.getAttribute('data-view-month')) + Number(calendarNav.getAttribute('data-calendar-nav')), 1);
+        navControl.setAttribute('data-view-year', String(viewDate.getFullYear()));
+        navControl.setAttribute('data-view-month', String(viewDate.getMonth()));
+        refreshCalendar(navControl);
+        return;
+      }
+
+      var calendarDay = target.closest('[data-calendar-date]');
+      if (calendarDay && root.contains(calendarDay)) {
+        event.preventDefault();
+        var dayControl = calendarDay.closest('.crm-date-picker');
+        updateCustomDate(dayControl, calendarDay.getAttribute('data-calendar-date'));
+        closeCustomPopovers(root);
+        return;
+      }
+
+      var calendarAction = target.closest('[data-calendar-action]');
+      if (calendarAction && root.contains(calendarAction)) {
+        event.preventDefault();
+        var actionControl = calendarAction.closest('.crm-date-picker');
+        updateCustomDate(actionControl, calendarAction.getAttribute('data-calendar-action') === 'today' ? todayLocalStr() : '');
+        closeCustomPopovers(root);
+        return;
+      }
+
+      var dateTrigger = target.closest('.crm-date-picker-trigger');
+      if (dateTrigger && root.contains(dateTrigger)) {
+        event.preventDefault();
+        toggleCustomPopover(root, dateTrigger.closest('.crm-date-picker'));
+      }
+    });
+
+    document.addEventListener('mousedown', function (event) {
+      var target = event.target instanceof Element ? event.target : null;
+      if (!target || !root.contains(target) || !target.closest('.crm-popover-control')) closeCustomPopovers(root);
+    });
   }
 
   // Conteúdo interno do container de tags (chips + input) — reusado no render
@@ -752,6 +1031,7 @@
       '</div>',
     ].join('');
     document.body.appendChild(root);
+    bindCustomControls(root);
 
     document.getElementById('crm-refresh-btn').addEventListener('click', function () {
       state.current.phone = null; // force reload
@@ -1713,9 +1993,9 @@
         success ? '<div class="crm-alert crm-alert-success">' + escapeHtml(success) + '</div>' : '',
         '<form id="crm-save-form">',
         fieldIcon('Nome', ICON.user, '<input class="crm-input crm-has-icon" type="text" id="crm-nome" value="' + escapeHtml(form.nome) + '" placeholder="Nome do contato" required />'),
-        fieldIcon('Status', ICON.flag, '<select class="crm-select crm-has-icon" id="crm-status">' + statusOptions(form.status) + '</select>'),
-        fieldIcon('Origem', ICON.globe, '<select class="crm-select crm-has-icon" id="crm-origem">' + sourceOptions(sources, form.origem_id) + '</select>'),
-        fieldIcon('Segmento', ICON.tag, '<select class="crm-select crm-has-icon" id="crm-segmento">' + segmentOptions(segments, form.segmento_id) + '</select>'),
+        customSelectField('Status', ICON.flag, 'crm-status', form.status, statusSelectItems()),
+        customSelectField('Origem', ICON.globe, 'crm-origem', form.origem_id, sourceSelectItems(sources)),
+        customSelectField('Segmento', ICON.tag, 'crm-segmento', form.segmento_id, segmentSelectItems(segments)),
         fieldIcon('Valor (R$)', ICON.dollar, '<input class="crm-input crm-has-icon" type="text" inputmode="decimal" id="crm-valor" value="' + escapeHtml(form.valor != null ? String(form.valor) : '') + '" placeholder="Ex: 1.500,00" />'),
         tagsFieldHtml(form.tags),
         fieldIcon('Observação', ICON.file, '<textarea class="crm-textarea crm-has-icon" id="crm-obs" placeholder="Informações do atendimento...">' + escapeHtml(form.observacao) + '</textarea>', true),
@@ -1771,9 +2051,9 @@
         success ? '<div class="crm-alert crm-alert-success">' + escapeHtml(success) + '</div>' : '',
         '<form id="crm-update-form">',
         fieldIcon('Nome', ICON.user, '<input class="crm-input crm-has-icon" type="text" id="crm-nome" value="' + escapeHtml(form.nome) + '" placeholder="Nome do contato" />'),
-        fieldIcon('Status', ICON.flag, '<select class="crm-select crm-has-icon" id="crm-status">' + statusOptions(form.status) + '</select>'),
-        fieldIcon('Origem', ICON.globe, '<select class="crm-select crm-has-icon" id="crm-origem">' + sourceOptions(sources, form.origem_id) + '</select>'),
-        fieldIcon('Segmento', ICON.tag, '<select class="crm-select crm-has-icon" id="crm-segmento">' + segmentOptions(segments, form.segmento_id) + '</select>'),
+        customSelectField('Status', ICON.flag, 'crm-status', form.status, statusSelectItems()),
+        customSelectField('Origem', ICON.globe, 'crm-origem', form.origem_id, sourceSelectItems(sources)),
+        customSelectField('Segmento', ICON.tag, 'crm-segmento', form.segmento_id, segmentSelectItems(segments)),
         fieldIcon('Valor (R$)', ICON.dollar, '<input class="crm-input crm-has-icon" type="text" inputmode="decimal" id="crm-valor" value="' + escapeHtml(form.valor != null ? String(form.valor) : '') + '" placeholder="Ex: 1.500,00" />'),
         tagsFieldHtml(form.tags),
         fieldIcon('Observação', ICON.file, '<textarea class="crm-textarea crm-has-icon" id="crm-obs" placeholder="Informações do atendimento...">' + escapeHtml(form.observacao) + '</textarea>', true),
@@ -1795,9 +2075,9 @@
         success ? '<div class="crm-alert crm-alert-success">' + escapeHtml(success) + '</div>' : '',
         '<p style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 12px">Agendar novo follow-up</p>',
         '<form id="crm-followup-form">',
-        fieldIcon('Tipo', ICON.list, '<select class="crm-select crm-has-icon" id="crm-fu-tipo">' + activityTypeOptions(followupForm.tipo) + '</select>'),
+        customSelectField('Tipo', ICON.list, 'crm-fu-tipo', followupForm.tipo, activityTypeSelectItems()),
         '<div class="crm-followup-row" style="margin-bottom:10px">',
-        '<div class="crm-field" style="margin-bottom:0"><label class="crm-label">Data</label><div class="crm-input-wrap">' + ICON.calendar + '<input class="crm-input crm-has-icon" type="date" id="crm-fu-data" value="' + escapeHtml(followupForm.data) + '" required /></div></div>',
+        customDateField('Data', 'crm-fu-data', followupForm.data),
         '<div class="crm-field" style="margin-bottom:0"><label class="crm-label">Hora</label><div class="crm-input-wrap">' + ICON.clock + '<input class="crm-input crm-has-icon" type="time" id="crm-fu-hora" value="' + escapeHtml(followupForm.hora) + '" required /></div></div>',
         '</div>',
         fieldIcon('Descrição', ICON.file, '<input class="crm-input crm-has-icon" type="text" id="crm-fu-desc" value="' + escapeHtml(followupForm.descricao) + '" placeholder="Opcional..." />'),

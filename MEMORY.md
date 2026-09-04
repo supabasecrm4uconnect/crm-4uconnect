@@ -5,8 +5,8 @@
 ## Estado atual
 
 - O `crm-web` de produção permanece inalterado por esta correção.
-- A versão local da extensão passa a ser 1.0.5; esta correção ainda não foi enviada ao GitHub nem à Chrome Web Store pelo Codex.
-- A branch local `fix/whatsapp-contact-save-v1.0.2` contém a correção da extensão e sua documentação; a criação de contato foi validada em campo.
+- A versão local da extensão passa a ser 1.0.6; esta correção ainda não foi enviada ao GitHub nem à Chrome Web Store pelo Codex.
+- A branch local `fix/whatsapp-contact-save-v1.0.6` contém a correção da extensão e sua documentação; a criação de contato foi validada em campo.
 
 ## Gotcha: salvamento de contatos no WhatsApp Web
 
@@ -34,6 +34,22 @@
 - O visual replica os tokens dos modais do CRM Web: fundo `slate-950/40` com blur, cartão branco `rounded-xl`, borda `slate-200`, sombra `shadow-xl`, cabeçalho `slate-50/60` e indicador `emerald`.
 - Ao concluir, a tela existente do lead retorna com a confirmação de sucesso; em falha de gravação no CRM, o overlay fecha antes da mensagem de erro.
 
+## Consistência visual dos controles da extensão
+
+- A versão 1.0.6 substitui os `select` visíveis por listboxes próprios no cadastro,
+  edição e follow-up, usando os mesmos tokens do `CustomSelect` do CRM Web.
+- A data do follow-up usa calendário próprio com navegação mensal, destaque do dia
+  atual, seleção esmeralda e ações **Limpar** e **Hoje**, seguindo
+  `CustomDatePicker` e `CustomCalendar` do CRM Web.
+- As abas **Dados**, **Atividades** e **Follow-ups** seguem o padrão sublinhado do
+  drawer de leads do CRM.
+- Os valores permanecem espelhados em controles ocultos com os IDs anteriores;
+  assim, validação, estado e payloads de salvamento não mudaram.
+- Gotcha: o popup de `select` e `input type="date"` nativos não pode ser
+  uniformizado integralmente por CSS entre navegador e sistema operacional.
+
 ## Próximo passo
 
-- [ ] Recarregar a extensão local e as abas do CRM/WhatsApp; confirmar a sessão, o overlay **Salvando lead...**, o cadastro do contato e a cobertura do drawer antes de publicar a versão 1.0.5.
+- [ ] Recarregar a extensão local e a aba do WhatsApp; conferir listboxes,
+  calendário, abas e o fluxo completo de salvamento antes de publicar a versão
+  1.0.6.

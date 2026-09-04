@@ -73,3 +73,32 @@ destaque esmeralda.
 - O usuário recebe retorno imediato após o clique sem acompanhar detalhes internos.
 - O drawer nativo permanece coberto durante todo o fluxo.
 - O tempo visível da mensagem inclui também a sincronização do contato.
+
+## ADR-004 — Controles de formulário compartilhando a linguagem visual do CRM
+
+- **Data:** 04/09/2026
+- **Status:** Aceita
+
+### Contexto
+
+Os menus de um `select` nativo e o calendário de um `input type="date"` são
+renderizados pelo Chrome e pelo sistema operacional. Por isso, esses elementos
+mantinham aparência diferente dos componentes personalizados usados pelo CRM Web,
+mesmo quando o campo fechado recebia CSS semelhante.
+
+### Decisão
+
+Usar na extensão controles próprios de listbox e calendário que reproduzem os
+tokens dos componentes `CustomSelect`, `CustomDatePicker` e `CustomCalendar` do
+CRM Web. Os valores continuam espelhados em controles nativos ocultos com os IDs
+anteriores, preservando a integração com o estado e as rotinas de salvamento já
+existentes. As abas seguem o padrão sublinhado usado no drawer de leads do CRM.
+
+### Consequências
+
+- Listboxes, calendário e abas mantêm a mesma linguagem de cor, tipografia,
+  espaçamento, bordas, sombras e estados ativos do CRM Web.
+- O calendário oferece navegação mensal e ações **Limpar** e **Hoje** sem depender
+  do seletor nativo do navegador.
+- Mudanças futuras nesses componentes do CRM Web devem ser refletidas também em
+  `crm-extension/content.js` e `crm-extension/sidebar.css`.
