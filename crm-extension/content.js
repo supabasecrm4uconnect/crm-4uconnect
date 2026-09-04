@@ -20,6 +20,7 @@
   const CRM_URL = 'https://connect-crm.vercel.app';
 
   const STORAGE_KEY = 'crm_4u_session';
+  const OBSERVATION_MAX_LENGTH = 500;
 
   /* ===== STATUS CONFIG (dinâmico — carregado do DB) ===== */
 
@@ -405,6 +406,19 @@
   function fieldIcon(label, icon, controlHtml, top) {
     return '<div class="crm-field"><label class="crm-label">' + label + '</label>'
       + '<div class="crm-input-wrap' + (top ? ' crm-wrap-top' : '') + '">' + icon + controlHtml + '</div></div>';
+  }
+
+  function observationFieldHtml(value) {
+    // Não trunca silenciosamente observações antigas que já ultrapassem o novo limite.
+    // O maxlength passa a valer para novas digitações e colagens na extensão.
+    var observation = normalizeControlValue(value);
+    return '<div class="crm-field">' +
+      '<label class="crm-label" for="crm-obs">Observação</label>' +
+      '<div class="crm-input-wrap crm-wrap-top">' + ICON.file +
+        '<textarea class="crm-textarea crm-has-icon" id="crm-obs" maxlength="' + OBSERVATION_MAX_LENGTH + '" aria-describedby="crm-obs-count" placeholder="Informações do atendimento...">' + escapeHtml(observation) + '</textarea>' +
+      '</div>' +
+      '<p class="crm-character-count" id="crm-obs-count">' + observation.length + '/' + OBSERVATION_MAX_LENGTH + '</p>' +
+    '</div>';
   }
 
   var CONTROL_CHEVRON = '<svg class="crm-control-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
@@ -1689,7 +1703,7 @@
   function waSalvarContatoInteligente(nomeCompleto) {
     if (!waConversaSelecionada()) {
       console.warn('[Connect CRM] Sem conversa aberta — automação de contato ignorada.');
-      return Promise.resolve();
+      return Promise.resolve(false);
     }
     return waAbrirDrawer()
       .then(function () {
@@ -1744,6 +1758,7 @@
           modulo: 'content.js',
           contexto: { nome: String(nomeCompleto || '') }
         });
+        return true;
       })
       .catch(function (err) {
         console.warn('[Connect CRM] Automação de contato falhou:', err && (err.message || err));
@@ -1752,6 +1767,7 @@
           erro_tecnico: err && (err.stack || err.message || String(err)),
           contexto: { nome: String(nomeCompleto || '') }
         });
+        return false;
       });
   }
 
@@ -2182,7 +2198,7 @@
         customSelectField('Segmento', ICON.tag, 'crm-segmento', form.segmento_id, segmentSelectItems(segments)),
         fieldIcon('Valor (R$)', ICON.dollar, '<input class="crm-input crm-has-icon" type="text" inputmode="decimal" id="crm-valor" value="' + escapeHtml(form.valor != null ? String(form.valor) : '') + '" placeholder="Ex: 1.500,00" />'),
         tagsFieldHtml(form.tags),
-        fieldIcon('Observação', ICON.file, '<textarea class="crm-textarea crm-has-icon" id="crm-obs" placeholder="Informações do atendimento...">' + escapeHtml(form.observacao) + '</textarea>', true),
+        observationFieldHtml(form.observacao),
         '<button id="crm-save-submit" class="crm-btn crm-btn-primary" type="button"' + (saving ? ' disabled' : '') + '>',
         saving ? '<span class="crm-spinner"></span> Salvando...' : 'Salvar no CRM',
         '</button>',
@@ -2193,6 +2209,7 @@
     else if (view === 'existing-lead') {
       var lead = current.lead;
       var leadStatus = lead.status || 'novo_lead';
+      var updateDirty = isLeadFormDirty();
 
       // --- Tab bar ---
       var avisosCount = state.pendingFollowups;
@@ -2240,8 +2257,8 @@
         customSelectField('Segmento', ICON.tag, 'crm-segmento', form.segmento_id, segmentSelectItems(segments)),
         fieldIcon('Valor (R$)', ICON.dollar, '<input class="crm-input crm-has-icon" type="text" inputmode="decimal" id="crm-valor" value="' + escapeHtml(form.valor != null ? String(form.valor) : '') + '" placeholder="Ex: 1.500,00" />'),
         tagsFieldHtml(form.tags),
-        fieldIcon('Observação', ICON.file, '<textarea class="crm-textarea crm-has-icon" id="crm-obs" placeholder="Informações do atendimento...">' + escapeHtml(form.observacao) + '</textarea>', true),
-        '<button id="crm-update-submit" class="crm-btn crm-btn-primary" type="button"' + (saving ? ' disabled' : '') + '>',
+        observationFieldHtml(form.observacao),
+        '<button id="crm-update-submit" class="crm-btn crm-btn-primary" type="button"' + (saving ? ' disabled' : '') + (updateDirty ? '' : ' hidden') + '>',
         saving ? '<span class="crm-spinner"></span> Salvando...' : 'Salvar alterações',
         '</button>',
         '</form>',
@@ -2433,19 +2450,93 @@
     }
   }
 
-  // Converte "1.500,00", "R$ 2000", "1500.50" em número (ou null)
+  // Mantém o campo monetário restrito a números e um separador decimal.
+  // Entradas pt-BR e colagens comuns são normalizadas sem alterar o tipo enviado ao banco.
+  function sanitizeValorInput(input) {
+    var raw = String(input == null ? '' : input).replace(/[^\d.,]/g, '');
+    if (!raw) return '';
+
+    var commaIndex = raw.lastIndexOf(',');
+    if (commaIndex !== -1) {
+      var integerWithComma = raw.slice(0, commaIndex).replace(/\D/g, '') || '0';
+      var decimalWithComma = raw.slice(commaIndex + 1).replace(/\D/g, '').slice(0, 2);
+      return integerWithComma + ',' + decimalWithComma;
+    }
+
+    var dots = raw.match(/\./g) || [];
+    if (dots.length === 1) {
+      var dotIndex = raw.indexOf('.');
+      var digitsAfterDot = raw.slice(dotIndex + 1).replace(/\D/g, '');
+      if (digitsAfterDot.length <= 2) {
+        var integerWithDot = raw.slice(0, dotIndex).replace(/\D/g, '') || '0';
+        return integerWithDot + ',' + digitsAfterDot;
+      }
+    }
+
+    return raw.replace(/\D/g, '');
+  }
+
+  // Converte "1.500,00", "2000" e "1500.50" em número (ou null).
   function parseValorBR(input) {
     if (input == null || input === '') return null;
     if (typeof input === 'number') return isFinite(input) ? input : null;
-    var s = String(input).replace(/[^\d.,-]/g, '').trim();
+    var s = sanitizeValorInput(input);
     if (!s) return null;
-    if (s.indexOf(',') !== -1 && s.indexOf('.') !== -1) {
-      s = s.replace(/\./g, '').replace(',', '.');
-    } else if (s.indexOf(',') !== -1) {
-      s = s.replace(',', '.');
-    }
+    s = s.replace(',', '.');
     var n = parseFloat(s);
     return isFinite(n) ? n : null;
+  }
+
+  function normalizedTags(tags) {
+    var unique = [];
+    (Array.isArray(tags) ? tags : []).forEach(function (tag) {
+      var normalized = String(tag || '').trim();
+      if (normalized && unique.indexOf(normalized) === -1) unique.push(normalized);
+    });
+    return unique.sort();
+  }
+
+  function effectiveFormTags() {
+    var tags = Array.isArray(state.form.tags) ? state.form.tags.slice() : [];
+    var tagInput = document.getElementById('crm-tag-input');
+    var pending = tagInput ? tagInput.value.trim().replace(/,/g, '') : '';
+    if (pending && tags.indexOf(pending) === -1) tags.push(pending);
+    return tags;
+  }
+
+  function sameNormalizedTags(left, right) {
+    var a = normalizedTags(left);
+    var b = normalizedTags(right);
+    if (a.length !== b.length) return false;
+    return a.every(function (tag, index) { return tag === b[index]; });
+  }
+
+  function isLeadFormDirty() {
+    var lead = state.current.lead;
+    if (!lead || state.ui.view !== 'existing-lead') return false;
+
+    var formValue = parseValorBR(state.form.valor);
+    var leadValue = parseValorBR(lead.valor);
+    return (
+      String(state.form.nome || '').trim() !== String(lead.nome || '').trim() ||
+      String(state.form.status || '') !== String(lead.status || '') ||
+      String(state.form.origem_id || '') !== String(lead.origem_id || '') ||
+      String(state.form.segmento_id || '') !== String(lead.segmento_id || '') ||
+      String(state.form.observacao || '').trim() !== String(lead.observacao || '').trim() ||
+      formValue !== leadValue ||
+      !sameNormalizedTags(effectiveFormTags(), lead.tags || [])
+    );
+  }
+
+  function refreshUpdateButtonVisibility() {
+    var button = document.getElementById('crm-update-submit');
+    if (!button) return;
+    button.hidden = !state.ui.saving && !isLeadFormDirty();
+  }
+
+  function refreshObservationCount(value) {
+    var counter = document.getElementById('crm-obs-count');
+    if (counter) counter.textContent = String(value || '').length + '/' + OBSERVATION_MAX_LENGTH;
   }
 
   function syncFormInputs() {
@@ -2461,8 +2552,21 @@
     Object.keys(inputs).forEach(function (id) {
       var el = document.getElementById(id);
       if (el) {
-        el.addEventListener('input', function (e) { inputs[id](e.target.value); });
-        el.addEventListener('change', function (e) { inputs[id](e.target.value); });
+        var syncInput = function (e) {
+          var value = e.target.value;
+          if (id === 'crm-valor') {
+            value = sanitizeValorInput(value);
+            if (e.target.value !== value) e.target.value = value;
+          } else if (id === 'crm-obs') {
+            value = String(value || '').slice(0, OBSERVATION_MAX_LENGTH);
+            if (e.target.value !== value) e.target.value = value;
+            refreshObservationCount(value);
+          }
+          inputs[id](value);
+          refreshUpdateButtonVisibility();
+        };
+        el.addEventListener('input', syncInput);
+        el.addEventListener('change', syncInput);
       }
     });
 
@@ -2489,6 +2593,7 @@
           var tag = btn.getAttribute('data-remove-tag');
           state.form.tags = state.form.tags.filter(function (t) { return t !== tag; });
           renderTagsOnly();
+          refreshUpdateButtonVisibility();
         }
       });
     }
@@ -2499,6 +2604,7 @@
   function bindTagInputKeydown() {
     var tagInput = document.getElementById('crm-tag-input');
     if (!tagInput) return;
+    tagInput.addEventListener('input', refreshUpdateButtonVisibility);
     tagInput.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === ',') {
         e.preventDefault();
@@ -2506,12 +2612,15 @@
         if (val && state.form.tags.indexOf(val) === -1) {
           state.form.tags = state.form.tags.concat([val]);
           renderTagsOnly();
+          refreshUpdateButtonVisibility();
         } else {
           tagInput.value = '';
+          refreshUpdateButtonVisibility();
         }
       } else if (e.key === 'Backspace' && !tagInput.value && state.form.tags.length > 0) {
         state.form.tags = state.form.tags.slice(0, -1);
         renderTagsOnly();
+        refreshUpdateButtonVisibility();
       }
     });
   }
@@ -2525,6 +2634,7 @@
     bindTagInputKeydown();
     var input = document.getElementById('crm-tag-input');
     if (input) input.focus();
+    refreshUpdateButtonVisibility();
   }
 
   /* ===== HANDLERS ===== */
@@ -2636,10 +2746,6 @@
     if (!state.current.lead) return;
 
     flushTagInput();
-    state.ui.saving = true;
-    state.ui.error = '';
-    render();
-
     var nome = state.form.nome;
     var status = state.form.status;
     var origem_id = state.form.origem_id;
@@ -2650,6 +2756,16 @@
     var nomeChanged = (nome || '').trim() !== (state.current.lead.nome || '').trim();
     var token = state.auth.access_token;
     var leadId = state.current.lead.id;
+
+    if (!isLeadFormDirty()) {
+      refreshUpdateButtonVisibility();
+      return;
+    }
+
+    state.ui.saving = true;
+    state.ui.leadSaveOverlay = nomeChanged;
+    state.ui.error = '';
+    render();
 
     updateLead(leadId, {
       nome: nome.trim() || state.current.lead.nome,
@@ -2667,13 +2783,10 @@
 
       return afterHistory.then(function () {
         state.current.lead = Object.assign({}, state.current.lead, updated);
-        state.ui.saving = false;
-        state.ui.success = 'Alterações salvas!';
         if (typeof crmLogger !== 'undefined') crmLogger.info('lead_atualizado', 'Lead atualizado com sucesso no CRM', {
           modulo: 'content.js',
           contexto: { lead_id: leadId, status_mudou: statusChanged }
         });
-        render();
 
         // Atualiza o cache local (todas as variantes do número) e reinjeta badges na lista
         if (updated && updated.whatsapp) {
@@ -2684,10 +2797,18 @@
 
         // Sincroniza nome no WhatsApp Web apenas quando o nome mudou
         if (nomeChanged && document.querySelector('#main')) {
-          syncContactNameToWA(updated.nome || nome);
+          return syncContactNameToWA(updated.nome || nome);
         }
-
-        setTimeout(function () { state.ui.success = ''; render(); }, 3000);
+        return true;
+      }).then(function (whatsAppSynced) {
+        state.ui.saving = false;
+        state.ui.leadSaveOverlay = false;
+        state.ui.error = nomeChanged && whatsAppSynced === false
+          ? 'Alterações salvas no CRM, mas o nome não foi sincronizado no WhatsApp.'
+          : '';
+        state.ui.success = state.ui.error ? '' : 'Alterações salvas!';
+        render();
+        setTimeout(function () { state.ui.error = ''; state.ui.success = ''; render(); }, 3000);
       });
     }).catch(function (err) {
       console.error('[Connect CRM] Erro ao atualizar lead:', err);
@@ -2697,6 +2818,7 @@
         contexto: { lead_id: state.current.lead && state.current.lead.id, status: err && err.status }
       });
       state.ui.saving = false;
+      state.ui.leadSaveOverlay = false;
       if (err && err.isUnauthorized) { handleUnauthorized(); } else { state.ui.error = 'Erro de conexão.'; render(); }
     });
   }

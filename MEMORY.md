@@ -5,8 +5,8 @@
 ## Estado atual
 
 - O `crm-web` de produção permanece inalterado por esta correção.
-- A versão local da extensão passa a ser 1.0.10; esta correção ainda não foi enviada ao GitHub nem à Chrome Web Store pelo Codex.
-- A branch local `fix/whatsapp-contact-save-v1.0.10` contém a correção da extensão e sua documentação; a criação de contato foi validada em campo.
+- A versão local da extensão passa a ser 1.0.11; esta correção ainda não foi enviada ao GitHub nem à Chrome Web Store pelo Codex.
+- A branch local `fix/whatsapp-contact-save-v1.0.11` contém a correção da extensão e sua documentação; a criação de contato foi validada em campo.
 
 ## Gotcha: salvamento de contatos no WhatsApp Web
 
@@ -74,8 +74,27 @@
 - O fallback agora consulta o `organization_id` do perfil autenticado antes de
   buscar `nome_exibicao`/`nome`, seguindo o mesmo fluxo do CRM Web.
 
+## Formulário contextual e validações locais
+
+- A versão 1.0.11 oculta **Salvar alterações** em leads existentes até que nome,
+  status, origem, segmento, valor, observação ou tags realmente mudem; desfazer
+  todas as mudanças volta a ocultar o botão.
+- A comparação normaliza espaços, IDs nulos, ordem das tags e valores monetários,
+  evitando falso positivo para representações equivalentes do mesmo dado.
+- Valor aceita somente dígitos e separadores monetários válidos, remove conteúdo
+  inválido colado e limita a parte decimal a duas casas antes de reutilizar o
+  payload numérico já existente.
+- Observação limita novas entradas a 500 caracteres e mostra contador. Conteúdo
+  antigo acima desse limite não é truncado automaticamente durante a leitura.
+- Alterar o nome mantém o overlay **Salvando lead...** visível durante a gravação
+  no CRM e a sincronização nativa no WhatsApp. Se só o WhatsApp falhar, a mensagem
+  informa que o CRM foi salvo e que apenas a sincronização do nome não concluiu.
+- As abas **Dados**, **Follow-up** e **Avisos** dividem toda a largura disponível e
+  mantêm ícones e textos centralizados.
+- Nenhuma mudança desta versão altera schema, tabelas, colunas, tipos ou RLS.
+
 ## Próximo passo
 
-- [ ] Recarregar a extensão local e a aba do WhatsApp; conferir listboxes,
-  calendário, date picker, time picker, ícones, abas e o fluxo completo de
-  salvamento antes de publicar a versão 1.0.10.
+- [ ] Recarregar a extensão local e a aba do WhatsApp; conferir o botão
+  condicional, Valor, limite da Observação, tabs e alteração de nome antes de
+  publicar a versão 1.0.11.

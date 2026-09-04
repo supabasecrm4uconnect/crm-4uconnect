@@ -143,3 +143,41 @@ e busca somente essa organização, reproduzindo o fluxo do CRM.
 - Superadministradores não recebem mais o nome de uma organização arbitrária.
 - Sessões antigas sem `app_title` continuam funcionando por meio da consulta de
   fallback vinculada ao perfil.
+
+## ADR-006 — Salvamento contextual e validação local no formulário da extensão
+
+- **Data:** 04/09/2026
+- **Status:** Aceita
+
+### Contexto
+
+O formulário de um lead existente exibia a ação de salvar mesmo quando nenhum
+campo havia mudado. Além disso, a sincronização do nome com o contato nativo do
+WhatsApp acontecia sem o overlay usado na criação, enquanto Valor e Observação
+aceitavam entradas sem limites adequados à interface compacta da extensão.
+
+### Decisão
+
+Comparar o formulário com o lead carregado usando valores normalizados. O botão
+**Salvar alterações** só é exibido quando nome, status, origem, segmento, valor,
+observação ou tags realmente diferem da referência original. Valores monetários
+são higienizados no navegador, aceitando apenas dígitos e separador decimal, e
+continuam sendo convertidos para o mesmo número enviado à coluna `valor`.
+
+Limitar novas entradas no campo Observação a 500 caracteres, com contador
+visível. Observações antigas acima do limite não são truncadas apenas por serem
+carregadas. Quando o nome mudar, manter o overlay **Salvando lead...** até o fim
+da gravação no CRM e da tentativa de sincronização com o WhatsApp. As três abas
+passam a dividir igualmente toda a largura disponível.
+
+### Consequências
+
+- Saves redundantes deixam de ser oferecidos ao usuário e o botão reaparece
+  imediatamente se houver uma alteração real.
+- Formatos monetários equivalentes não geram falso estado de alteração.
+- A validação é exclusivamente de frontend: não há migration nem mudança de
+  tabela, coluna, tipo, RLS ou payload da API.
+- Falha apenas na sincronização do WhatsApp é diferenciada de falha na gravação
+  do CRM, evitando informar que dados já persistidos foram perdidos.
+- O botão de criação de um contato ainda não cadastrado permanece visível, pois
+  salvar o novo lead é a ação principal desse estado.
