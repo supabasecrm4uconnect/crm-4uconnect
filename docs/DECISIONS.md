@@ -206,7 +206,7 @@ e extensão também recebem uma versão PNG de 128×128 visualmente idêntica.
 
 - Site, página de extensões e Chrome Web Store passam a usar a mesma identidade.
 - O favicon permanece nítido no navegador por usar a fonte vetorial.
-- O PNG usado pela extensão mantém 16 pixels transparentes ao redor do círculo,
-  preservando legibilidade em tamanhos reduzidos.
+- O PNG usado pela extensão mantém 4 pixels transparentes ao redor do círculo de
+  120 pixels, ocupando praticamente toda a tela sem cortar a suavização das bordas.
 - Toda troca futura do favicon deve atualizar o SVG, os PNGs equivalentes e o
   pacote ZIP enviado à loja.

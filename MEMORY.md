@@ -103,7 +103,7 @@
 - O CRM Web referencia `/favicon.svg`: um círculo `#10B981` sobre fundo
   transparente. O `apple-touch-icon` usa o PNG equivalente.
 - `crm-web/public/favicon.png` e `crm-extension/favicon.png` são versões 128×128
-  idênticas do círculo, com margem transparente de 16 pixels.
+  idênticas do círculo, com diâmetro de 120 pixels e margem transparente de 4 pixels.
 - O build de produção do CRM Web concluiu com sucesso após a troca.
 
 ## Próximo passo
