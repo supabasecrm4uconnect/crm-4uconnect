@@ -245,3 +245,6 @@ Este arquivo é o **diário de bordo dinâmico** do projeto. Ele registra o esta
 - `npm audit fix` atualizou o React Router de 7.17.0 para 7.18.3 no lockfile e a auditoria retornou zero vulnerabilidades. O requisito do runtime foi documentado e fixado em Node.js 20.19+ ou 22.12+.
 - A extensão passou na validação sintática de todos os JavaScripts e do `manifest.json`; o domínio `connect-crm.vercel.app` está sincronizado nos três pontos obrigatórios e os dois aliases Vercel responderam HTTP 200.
 - O bundle principal continua grande (aproximadamente 1,35 MB minificado / 380 KB gzip). É um risco de desempenho, não de quebra funcional, e pode ser reduzido depois com code splitting.
+- A branch `preview/revisao-segura-2026-09-04` foi criada e enviada ao GitHub com commits separados para banco/documentação, painel web e extensão. A `main` remota não foi alterada.
+- A Vercel concluiu o deployment temporário com sucesso. A URL de Preview está protegida pelo login da Vercel; as variáveis do ambiente Preview precisam ser conferidas antes de qualquer teste que grave dados.
+- A credencial Git atual consegue enviar branches, mas o GitHub recusou a criação automatizada de Pull Request por falta de permissão de colaborador. Se necessário, o PR deve ser criado por uma conta com acesso ao repositório.

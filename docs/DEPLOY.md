@@ -82,6 +82,18 @@ Ao alterar o domínio onde o CRM Web está hospedado, garanta a sincronização 
 
 ## 6. Checklist de Deploy
 
+### 6.1. Preview seguro antes da produção
+
+1. Crie uma branch fora da `main`, por exemplo `preview/revisao-segura-AAAA-MM-DD`.
+2. Execute `npm run build`, `npm run lint` e valide a extensão antes do push.
+3. Envie somente a branch de Preview. A integração Git da Vercel gera um deployment temporário sem alterar os domínios de produção.
+4. Confirme as variáveis do ambiente **Preview** antes de testar gravações. Se `VITE_SUPABASE_URL` apontar para produção, qualquer cadastro, lead ou follow-up criado pelo Preview também será dado real de produção.
+5. O deployment de Preview não executa arquivos SQL de `database/migrations/` ou `database/operations/`.
+6. Mantenha o Preview protegido por autenticação da Vercel quando ele contiver telas ou dados administrativos.
+7. Só integre a branch na `main` após validar login, leads, pipeline, follow-ups, configurações e Clientes & Assinaturas.
+
+### 6.2. Produção
+
 - [ ] Somente as migrations realmente pendentes de `database/migrations/` foram revisadas e executadas no Supabase.
 - [ ] Nenhum arquivo de `database/operations/` foi incluído automaticamente no deploy.
 - [ ] Migration `32_restore_tenant_context_on_operational_inserts.sql` aplicada e validada no Supabase.
