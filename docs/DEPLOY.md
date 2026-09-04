@@ -39,5 +39,5 @@ Nunca autorizar `https://*.vercel.app` e nunca usar uma chave `service_role` na 
 8. Depois da publicação, instalar/atualizar pela loja e repetir a validação da sessão,
    criação e edição de lead no WhatsApp Web.
 
-O ZIP da versão 1.0.12 é `crm-extension/dist/connect-crm-1.0.12.zip`. Ele contém
+O ZIP da versão 1.0.2 é `crm-extension/dist/connect-crm-1.0.2.zip`. Ele contém
 somente `manifest.json`, scripts, CSS e imagens necessários à extensão.

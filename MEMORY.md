@@ -5,8 +5,11 @@
 ## Estado atual
 
 - O `crm-web` de produção permanece inalterado por esta correção.
-- A versão local da extensão passa a ser 1.0.12; esta correção ainda não foi enviada ao GitHub nem à Chrome Web Store pelo Codex.
-- A branch local `fix/whatsapp-contact-save-v1.0.12` contém a correção da extensão e sua documentação; a criação de contato foi validada em campo.
+- A próxima versão pública da extensão é 1.0.2, sucessora da 1.0.1 atualmente publicada; ela ainda não foi enviada à Chrome Web Store pelo Codex.
+- A branch local `release/chrome-store-v1.0.2` contém a candidata consolidada e sua documentação; a criação de contato foi validada em campo.
+- Os números 1.0.3 a 1.0.12 registrados abaixo identificam checkpoints internos
+  usados durante o desenvolvimento. Eles nunca foram publicados e todas essas
+  alterações foram consolidadas na candidata pública 1.0.2.
 
 ## Gotcha: salvamento de contatos no WhatsApp Web
 
@@ -97,6 +100,6 @@
 ## Próximo passo
 
 - [x] Validar localmente o botão condicional, Valor, limite da Observação, tabs e
-  alteração de nome da versão 1.0.12.
-- [ ] Enviar `crm-extension/dist/connect-crm-1.0.12.zip` na aba **Pacote** do item
+  alteração de nome da versão pública candidata 1.0.2.
+- [ ] Enviar `crm-extension/dist/connect-crm-1.0.2.zip` na aba **Pacote** do item
   Connect CRM no Chrome Web Store Developer Dashboard e submeter para análise.
