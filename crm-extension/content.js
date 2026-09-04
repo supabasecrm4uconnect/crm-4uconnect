@@ -744,8 +744,10 @@
       '<div class="crm-content" id="crm-content"></div>',
       '<div id="crm-save-overlay" class="crm-save-overlay" role="status" aria-live="polite" aria-hidden="true">',
       '<div class="crm-save-overlay-card">',
-      '<span class="crm-save-overlay-spinner" aria-hidden="true"></span>',
+      '<div class="crm-save-overlay-header">',
+      '<span class="crm-save-overlay-icon" aria-hidden="true"><span class="crm-save-overlay-spinner"></span></span>',
       '<p>Salvando lead...</p>',
+      '</div>',
       '</div>',
       '</div>',
     ].join('');

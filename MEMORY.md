@@ -5,7 +5,7 @@
 ## Estado atual
 
 - O `crm-web` de produção permanece inalterado por esta correção.
-- A versão local da extensão passa a ser 1.0.4; esta correção ainda não foi enviada ao GitHub nem à Chrome Web Store pelo Codex.
+- A versão local da extensão passa a ser 1.0.5; esta correção ainda não foi enviada ao GitHub nem à Chrome Web Store pelo Codex.
 - A branch local `fix/whatsapp-contact-save-v1.0.2` contém a correção da extensão e sua documentação; a criação de contato foi validada em campo.
 
 ## Gotcha: salvamento de contatos no WhatsApp Web
@@ -29,10 +29,11 @@
 
 ## Progresso visual do salvamento
 
-- A versão 1.0.4 exibe um overlay único com o texto **Salvando lead...** desde o clique até o término da automação de contato no WhatsApp.
+- A versão 1.0.5 exibe um overlay único com o texto **Salvando lead...** desde o clique até o término da automação de contato no WhatsApp.
 - O overlay cobre toda a sidebar, bloqueia também o botão lateral e não revela etapas internas da automação.
+- O visual replica os tokens dos modais do CRM Web: fundo `slate-950/40` com blur, cartão branco `rounded-xl`, borda `slate-200`, sombra `shadow-xl`, cabeçalho `slate-50/60` e indicador `emerald`.
 - Ao concluir, a tela existente do lead retorna com a confirmação de sucesso; em falha de gravação no CRM, o overlay fecha antes da mensagem de erro.
 
 ## Próximo passo
 
-- [ ] Recarregar a extensão local e as abas do CRM/WhatsApp; confirmar a sessão, o overlay **Salvando lead...**, o cadastro do contato e a cobertura do drawer antes de publicar a versão 1.0.4.
+- [ ] Recarregar a extensão local e as abas do CRM/WhatsApp; confirmar a sessão, o overlay **Salvando lead...**, o cadastro do contato e a cobertura do drawer antes de publicar a versão 1.0.5.

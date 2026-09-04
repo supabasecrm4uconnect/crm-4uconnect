@@ -63,7 +63,10 @@ interface mais técnica e revelaria a automação que a sidebar deve cobrir.
 
 Exibir um único overlay bloqueante com spinner e a mensagem **Salvando lead...**
 durante as duas operações. A interface só retorna quando a automação do WhatsApp
-terminar ou quando ocorrer uma falha na gravação do CRM.
+terminar ou quando ocorrer uma falha na gravação do CRM. O overlay reutiliza a
+linguagem visual dos modais do CRM Web: backdrop `slate-950/40`, cartão branco
+`rounded-xl`, borda `slate-200`, sombra `shadow-xl`, superfície `slate-50/60` e
+destaque esmeralda.
 
 ### Consequências
 
