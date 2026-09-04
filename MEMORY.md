@@ -96,6 +96,7 @@
 
 ## Próximo passo
 
-- [ ] Recarregar a extensão local e a aba do WhatsApp; conferir o botão
-  condicional, Valor, limite da Observação, tabs e alteração de nome antes de
-  publicar a versão 1.0.12.
+- [x] Validar localmente o botão condicional, Valor, limite da Observação, tabs e
+  alteração de nome da versão 1.0.12.
+- [ ] Enviar `crm-extension/dist/connect-crm-1.0.12.zip` na aba **Pacote** do item
+  Connect CRM no Chrome Web Store Developer Dashboard e submeter para análise.
