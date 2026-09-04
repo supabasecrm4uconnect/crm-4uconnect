@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
-import { Upload, X, Loader2, FileSpreadsheet, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Upload, X, Loader2, FileSpreadsheet, CheckCircle2, AlertCircle, Check } from 'lucide-react'
+import CustomSelect from './CustomSelect'
 import { supabase } from '../lib/supabase'
-import { normalizeWhatsApp, phoneVariants, parseCurrency } from '../lib/helpers'
+import { normalizeCatalogName, normalizeWhatsApp, phoneVariants, parseCurrency } from '../lib/helpers'
 import type { LeadSource, LeadSegment, LeadWithRelations } from '../types'
 import type { StatusConfig } from '../contexts/StatusesContext'
 
@@ -39,8 +40,6 @@ const GUESS: Record<TargetField, RegExp> = {
   observacao: /observa|obs|nota|coment|descri/i,
   tags:       /tag|etiqueta|marcador/i,
 }
-
-const selectCls = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition bg-white'
 
 const NONE = '__none__'
 
@@ -108,33 +107,45 @@ export default function ImportLeadsModal({ open, onClose, onImported, sources, s
     const existingPhones = new Set<string>()
     existingLeads.forEach(l => phoneVariants(l.whatsapp).forEach(v => existingPhones.add(v)))
 
-    // Mapas de origem/segmento por nome (lowercase)
-    const sourceMap = new Map(sources.map(s => [s.nome.toLowerCase(), s.id]))
-    const segmentMap = new Map(segments.map(s => [s.nome.toLowerCase(), s.id]))
+    // Mapas de origem/segmento por nome normalizado.
+    const sourceMap = new Map(sources.map(s => [normalizeCatalogName(s.nome), s.id]))
+    const segmentMap = new Map(segments.map(s => [normalizeCatalogName(s.nome), s.id]))
     const statusByKey = new Map<string, string>()
     statuses.forEach(s => { statusByKey.set(s.value.toLowerCase(), s.value); statusByKey.set(s.label.toLowerCase(), s.value) })
     const defaultStatus = statuses[0]?.value ?? 'novo_lead'
 
     // 1ª passada: coleta origens/segmentos novos a criar
-    const newSourceNames = new Set<string>()
-    const newSegmentNames = new Set<string>()
+    const newSourceNames = new Map<string, string>()
+    const newSegmentNames = new Map<string, string>()
     for (const row of rows) {
       const o = cell(row, 'origem')
-      if (o && !sourceMap.has(o.toLowerCase())) newSourceNames.add(o)
+      const sourceKey = normalizeCatalogName(o)
+      if (sourceKey && !sourceMap.has(sourceKey)) newSourceNames.set(sourceKey, o.trim().replace(/\s+/g, ' '))
       const s = cell(row, 'segmento')
-      if (s && !segmentMap.has(s.toLowerCase())) newSegmentNames.add(s)
+      const segmentKey = normalizeCatalogName(s)
+      if (segmentKey && !segmentMap.has(segmentKey)) newSegmentNames.set(segmentKey, s.trim().replace(/\s+/g, ' '))
     }
 
     // Cria origens/segmentos faltantes (organization_id é preenchido pelo trigger)
     if (newSourceNames.size > 0) {
-      const { data } = await supabase.from('lead_sources')
-        .insert([...newSourceNames].map(nome => ({ nome }))).select('id, nome')
-      ;(data ?? []).forEach((s: { id: string; nome: string }) => sourceMap.set(s.nome.toLowerCase(), s.id))
+      const { data, error } = await supabase.from('lead_sources')
+        .insert([...newSourceNames.values()].map(nome => ({ nome }))).select('id, nome')
+      if (error) {
+        setImporting(false)
+        setParseError('Não foi possível criar as origens da importação. Atualize a página e tente novamente.')
+        return
+      }
+      ;(data ?? []).forEach((s: { id: string; nome: string }) => sourceMap.set(normalizeCatalogName(s.nome), s.id))
     }
     if (newSegmentNames.size > 0) {
-      const { data } = await supabase.from('lead_segments')
-        .insert([...newSegmentNames].map(nome => ({ nome }))).select('id, nome')
-      ;(data ?? []).forEach((s: { id: string; nome: string }) => segmentMap.set(s.nome.toLowerCase(), s.id))
+      const { data, error } = await supabase.from('lead_segments')
+        .insert([...newSegmentNames.values()].map(nome => ({ nome }))).select('id, nome')
+      if (error) {
+        setImporting(false)
+        setParseError('Não foi possível criar os segmentos da importação. Atualize a página e tente novamente.')
+        return
+      }
+      ;(data ?? []).forEach((s: { id: string; nome: string }) => segmentMap.set(normalizeCatalogName(s.nome), s.id))
     }
 
     const { data: { user } } = await supabase.auth.getUser()
@@ -161,8 +172,8 @@ export default function ImportLeadsModal({ open, onClose, onImported, sources, s
         nome,
         whatsapp: waNorm,
         status: statusByKey.get(statusRaw) ?? defaultStatus,
-        origem_id: origem ? sourceMap.get(origem.toLowerCase()) ?? null : null,
-        segmento_id: segmento ? segmentMap.get(segmento.toLowerCase()) ?? null : null,
+        origem_id: origem ? sourceMap.get(normalizeCatalogName(origem)) ?? null : null,
+        segmento_id: segmento ? segmentMap.get(normalizeCatalogName(segmento)) ?? null : null,
         valor: parseCurrency(cell(row, 'valor')),
         observacao: cell(row, 'observacao') || null,
         tags: tagsRaw ? tagsRaw.split(/[,;]/).map(t => t.trim()).filter(Boolean) : [],
@@ -175,17 +186,9 @@ export default function ImportLeadsModal({ open, onClose, onImported, sources, s
     // Insere em lotes de 200
     for (let i = 0; i < toInsert.length; i += 200) {
       const batch = toInsert.slice(i, i + 200)
-      const { data, error } = await supabase.from('leads').insert(batch).select('id, status')
+      const { data, error } = await supabase.from('leads').insert(batch).select('id')
       if (error) { errors += batch.length; continue }
       imported += data?.length ?? 0
-      // Histórico de status inicial
-      if (data && data.length) {
-        await supabase.from('lead_status_history').insert(
-          data.map((l: { id: string; status: string }) => ({
-            lead_id: l.id, status_anterior: null, status_novo: l.status, alterado_por: user?.id ?? null,
-          }))
-        )
-      }
     }
 
     setImporting(false)
@@ -196,31 +199,43 @@ export default function ImportLeadsModal({ open, onClose, onImported, sources, s
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 sticky top-0 bg-white">
-          <h2 className="text-slate-900 text-base font-semibold">Importar base de leads</h2>
-          <button onClick={handleClose} className="text-slate-400 hover:text-slate-600 transition"><X size={18} /></button>
+    <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
+      <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-scale-in">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-slate-50/60 sticky top-0 z-10">
+          <h2 className="text-slate-950 text-base font-bold">Importar Base de Leads</h2>
+          <button onClick={handleClose} className="text-slate-400 hover:text-slate-600 transition cursor-pointer"><X size={18} /></button>
         </div>
 
         <div className="px-6 py-5 space-y-5">
           {/* Resultado */}
           {result ? (
             <div className="space-y-4">
-              <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3.5">
+              <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200/80 rounded-xl px-4 py-3.5 shadow-2xs">
                 <CheckCircle2 size={20} className="text-emerald-600 shrink-0" />
                 <div>
-                  <p className="text-emerald-800 text-sm font-medium">Importação concluída</p>
-                  <p className="text-emerald-700 text-xs mt-0.5">
+                  <p className="text-emerald-800 text-sm font-bold">Importação Concluída</p>
+                  <p className="text-emerald-700 text-xs mt-0.5 font-medium">
                     {result.imported} lead{result.imported !== 1 ? 's' : ''} importado{result.imported !== 1 ? 's' : ''}
                     {result.skipped > 0 && ` · ${result.skipped} ignorado${result.skipped !== 1 ? 's' : ''} (duplicado/incompleto)`}
                     {result.errors > 0 && ` · ${result.errors} com erro`}
                   </p>
                 </div>
               </div>
-              <div className="flex justify-end gap-3">
-                <button onClick={reset} className="px-4 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition">Importar outro</button>
-                <button onClick={handleClose} className="px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium transition">Concluir</button>
+              <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <button
+                  onClick={reset}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 transition cursor-pointer shadow-2xs select-none"
+                >
+                  <Upload size={14} className="text-slate-400" />
+                  Importar Outro
+                </button>
+                <button
+                  onClick={handleClose}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold transition shadow-2xs cursor-pointer select-none"
+                >
+                  <Check size={14} />
+                  Concluir
+                </button>
               </div>
             </div>
           ) : (
@@ -257,21 +272,23 @@ export default function ImportLeadsModal({ open, onClose, onImported, sources, s
               {/* Mapeamento de colunas */}
               {headers.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">Relacionar colunas</p>
+                  <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2.5">Relacionar Colunas</p>
                   <div className="grid grid-cols-2 gap-3">
                     {TARGET_FIELDS.map(({ key, label, required }) => (
                       <div key={key}>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
                           {label}{required && <span className="text-red-500"> *</span>}
                         </label>
-                        <select
+                        <CustomSelect
                           value={mapping[key] ?? NONE}
-                          onChange={e => setMapping(m => ({ ...m, [key]: e.target.value === NONE ? '' : e.target.value }))}
-                          className={selectCls}
-                        >
-                          <option value={NONE}>— ignorar —</option>
-                          {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                        </select>
+                          onChange={val => setMapping(m => ({ ...m, [key]: val === NONE ? '' : val }))}
+                          options={[
+                            { value: NONE, label: '— ignorar —' },
+                            ...headers.map(h => ({ value: h, label: h }))
+                          ]}
+                          placeholder="— ignorar —"
+                          buttonClassName="w-full h-9 text-xs"
+                        />
                       </div>
                     ))}
                   </div>
@@ -306,12 +323,12 @@ export default function ImportLeadsModal({ open, onClose, onImported, sources, s
               )}
 
               {headers.length > 0 && (
-                <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                   <p className="text-xs text-slate-400">Duplicados (mesmo WhatsApp) são ignorados automaticamente.</p>
                   <button
                     onClick={handleImport}
                     disabled={!canImport}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium transition"
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed border border-emerald-700/50 text-white text-xs font-bold transition shadow-2xs cursor-pointer select-none"
                   >
                     {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
                     {importing ? 'Importando...' : `Importar ${rows.length} lead${rows.length !== 1 ? 's' : ''}`}

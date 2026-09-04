@@ -1,14 +1,13 @@
 @import "tailwindcss";
 
 @theme {
-  --shadow-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  --shadow-soft: 0 4px 20px -2px rgba(15, 23, 42, 0.06);
+  --shadow-card: 0 1px 3px 0 rgba(15, 23, 42, 0.06), 0 1px 2px -1px rgba(15, 23, 42, 0.06);
+  --shadow-card-hover: 0 10px 20px -3px rgba(15, 23, 42, 0.08), 0 4px 8px -4px rgba(15, 23, 42, 0.04);
+  --shadow-dropdown: 0 16px 32px -4px rgba(15, 23, 42, 0.12), 0 6px 12px -2px rgba(15, 23, 42, 0.06);
 
   /*
-   * Token de marca — hoje mapeado 1:1 pro emerald padrão do Tailwind (nenhuma
-   * mudança visual), mas centraliza a cor principal do produto num só lugar.
-   * Trocar a marca no futuro = editar só estes valores, sem precisar caçar
-   * `emerald-*` pelo app inteiro. Usar `brand-*` em código novo daqui pra frente;
-   * os `emerald-*` já existentes continuam funcionando normalmente.
+   * Token de marca centralizado
    */
   --color-brand-50: #ecfdf5;
   --color-brand-100: #d1fae5;
@@ -23,6 +22,10 @@
   --color-brand-950: #022c22;
 }
 
+html {
+  font-size: 16.8px;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -30,7 +33,36 @@
 body {
   margin: 0;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: #f1f5f9;
+  color: #0f172a;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Scrollbar verde moderno e elegante */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #10b981;
+  border-radius: 9999px;
+  transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #059669;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #10b981 transparent;
 }
 
 .scrollbar-hide {
@@ -47,4 +79,49 @@ body {
 }
 .animate-fade-in {
   animation: fade-in 0.35s ease-out;
+}
+
+@keyframes cascadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-cascade-item {
+  animation: cascadeIn 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    #f1f5f9 0%,
+    #f1f5f9 20%,
+    #e2e8f0 40%,
+    #ffffff 50%,
+    #e2e8f0 60%,
+    #f1f5f9 80%,
+    #f1f5f9 100%
+  );
+  background-size: 250% 100%;
+  animation: shimmer 2.4s ease-in-out infinite;
+}
+
+.skeleton-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.06);
 }

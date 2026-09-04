@@ -5,7 +5,7 @@ import StatusBadge from '../components/StatusBadge'
 import LeadAvatar from '../components/LeadAvatar'
 import LeadDrawer from '../components/LeadDrawer'
 import WhatsAppIcon from '../components/WhatsAppIcon'
-import TableRowSkeleton from '../components/TableRowSkeleton'
+import LeadTableSkeleton from '../components/skeletons/LeadTableSkeleton'
 import { supabase } from '../lib/supabase'
 import { exportLeadsToXlsx } from '../lib/exportLeads'
 import { formatWhatsApp, whatsappLink, formatCurrency, formatDateTime } from '../lib/helpers'
@@ -66,19 +66,9 @@ export default function Arquivados() {
           )}
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-100 overflow-hidden shadow-card">
           {loading ? (
-            <TableRowSkeleton
-              rows={6}
-              cols={[
-                { width: 'w-8', height: 'h-8', circle: true },
-                { width: 'w-36' },
-                { width: 'w-16' },
-                { width: 'w-20' },
-                { width: 'w-16' },
-                { width: 'w-20' },
-              ]}
-            />
+            <LeadTableSkeleton rows={6} />
           ) : leads.length === 0 ? (
             <div className="py-16 text-center">
               <Archive size={28} className="text-slate-200 mx-auto mb-3" />
@@ -86,35 +76,36 @@ export default function Arquivados() {
               <p className="text-slate-400 text-xs mt-1">Leads arquivados (manualmente ou por inatividade) aparecem aqui.</p>
             </div>
           ) : (
-            <table className="w-full animate-fade-in">
+            <table className="w-full">
               <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="text-left text-xs font-medium text-slate-500 px-5 py-3.5">Contato</th>
-                  <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Status</th>
-                  <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Origem</th>
-                  <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Valor</th>
-                  <th className="text-left text-xs font-medium text-slate-500 px-4 py-3.5">Arquivado em</th>
+                <tr className="border-b border-slate-100 bg-slate-50/50">
+                  <th className="text-left text-xs font-bold text-slate-600 px-5 py-3.5">Contato</th>
+                  <th className="text-left text-xs font-bold text-slate-600 px-4 py-3.5">Status</th>
+                  <th className="text-left text-xs font-bold text-slate-600 px-4 py-3.5">Origem</th>
+                  <th className="text-left text-xs font-bold text-slate-600 px-4 py-3.5">Valor</th>
+                  <th className="text-left text-xs font-bold text-slate-600 px-4 py-3.5">Arquivado em</th>
                   <th className="px-4 py-3.5" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
-                {leads.map(lead => (
+              <tbody className="divide-y divide-slate-100 text-xs">
+                {leads.map((lead, idx) => (
                   <tr
                     key={lead.id}
                     onClick={() => setSelectedLeadId(lead.id)}
-                    className="hover:bg-slate-50 cursor-pointer transition-colors"
+                    className="hover:bg-slate-50 cursor-pointer transition-colors animate-cascade-item"
+                    style={{ animationDelay: `${Math.min(idx * 25, 300)}ms` }}
                   >
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         <LeadAvatar nome={lead.nome} foto_url={lead.foto_url} />
                         <div>
-                          <p className="text-slate-900 text-sm font-medium">{lead.nome}</p>
+                          <p className="text-slate-900 text-sm font-bold">{lead.nome}</p>
                           <a
                             href={whatsappLink(lead.whatsapp)}
                             target="_blank"
                             rel="noreferrer"
                             onClick={e => e.stopPropagation()}
-                            className="text-xs text-slate-400 hover:text-emerald-600 flex items-center gap-1 transition"
+                            className="text-xs text-slate-400 hover:text-emerald-600 flex items-center gap-1 transition font-medium"
                           >
                             <WhatsAppIcon size={11} />
                             {formatWhatsApp(lead.whatsapp)}
@@ -123,14 +114,14 @@ export default function Arquivados() {
                       </div>
                     </td>
                     <td className="px-4 py-3.5"><StatusBadge status={lead.status} /></td>
-                    <td className="px-4 py-3.5 text-sm text-slate-600">{lead.lead_sources?.nome ?? '—'}</td>
-                    <td className="px-4 py-3.5 text-sm text-slate-700 tabular-nums whitespace-nowrap">{lead.valor != null ? formatCurrency(lead.valor) : '—'}</td>
-                    <td className="px-4 py-3.5 text-sm text-slate-500">{lead.arquivado_em ? formatDateTime(lead.arquivado_em) : '—'}</td>
+                    <td className="px-4 py-3.5 text-slate-600 font-medium">{lead.lead_sources?.nome ?? '—'}</td>
+                    <td className="px-4 py-3.5 text-slate-800 font-bold tabular-nums whitespace-nowrap">{lead.valor != null ? formatCurrency(lead.valor) : '—'}</td>
+                    <td className="px-4 py-3.5 text-slate-500 font-medium">{lead.arquivado_em ? formatDateTime(lead.arquivado_em) : '—'}</td>
                     <td className="px-4 py-3.5 text-right">
                       <button
                         onClick={(e) => handleRestore(lead.id, e)}
                         disabled={restoringId === lead.id}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 text-xs font-medium transition disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 text-xs font-bold transition disabled:opacity-50 cursor-pointer shadow-2xs"
                         title="Desarquivar lead"
                       >
                         {restoringId === lead.id ? <Loader2 size={13} className="animate-spin" /> : <ArchiveRestore size={13} />}

@@ -67,7 +67,8 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const load = useCallback(async () => {
-    setLoading(true)
+    // Só ativa loading visual se ainda não temos branding carregado (evita flicker na troca de abas)
+    setLoading(prev => (!company && !logoUrl && !cached ? true : prev))
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { apply('', null); return }
 
@@ -84,7 +85,7 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
       }
     }
     apply('', null)
-  }, [apply])
+  }, [apply, company, logoUrl, cached])
 
   useEffect(() => {
     load()

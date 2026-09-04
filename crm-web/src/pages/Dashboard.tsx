@@ -1,21 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  UserPlus, UserCheck, MessageCircle, FileText,
+  UserPlus,
   CalendarClock, CheckCircle2,
-  ArrowRight, TrendingUp, Users, Globe, DollarSign, Wallet, Loader2,
+  ArrowRight, TrendingUp, Users, Globe, DollarSign, Wallet, Loader2, Briefcase,
 } from 'lucide-react'
 import Layout from '../components/Layout'
 import StatusBadge from '../components/StatusBadge'
 import LeadAvatar from '../components/LeadAvatar'
+import CustomDateRangePicker from '../components/CustomDateRangePicker'
+import DashboardSkeleton from '../components/skeletons/DashboardSkeleton'
 import { supabase } from '../lib/supabase'
-import { localDateStr, whatsappLink, formatDateTime, formatCurrency } from '../lib/helpers'
+import { localDateStr, formatDateTime, formatCurrency, formatDate } from '../lib/helpers'
 
 interface Stats {
   total_leads: number
   novos_hoje: number
-  em_atendimento: number
-  proposta_enviada: number
+  em_negociacao: number
   followups_hoje: number
   followups_atrasados: number
   concluidos_hoje: number
@@ -33,7 +34,6 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: '7d',    label: '7 dias' },
   { key: '30d',   label: '30 dias' },
   { key: 'mes',   label: 'Este mês' },
-  { key: 'custom', label: 'Personalizado' },
 ]
 
 function dayStartISO(dateStr: string): string {
@@ -52,14 +52,6 @@ function shiftDays(dateStr: string, delta: number): string {
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`
 }
 
-interface FollowUp {
-  id: string
-  tipo_atividade: string
-  hora_agendada: string
-  descricao: string | null
-  leads: { id: string; nome: string; whatsapp: string } | null
-}
-
 interface LeadRecente {
   id: string
   nome: string
@@ -74,16 +66,6 @@ interface OrigemCount {
   count: number
 }
 
-const activityLabel: Record<string, string> = {
-  ligar:              'Ligar',
-  enviar_mensagem:    'Enviar mensagem',
-  retornar_orcamento: 'Retornar orçamento',
-  cobrar_resposta:    'Cobrar resposta',
-  reuniao:            'Reunião',
-  enviar_proposta:    'Enviar proposta',
-  pos_venda:          'Pós-venda',
-}
-
 function greeting() {
   const h = new Date().getHours()
   if (h < 12) return 'Bom dia'
@@ -94,17 +76,16 @@ function greeting() {
 export default function Dashboard() {
   const navigate = useNavigate()
   const [stats, setStats] = useState<Stats>({
-    total_leads: 0, novos_hoje: 0, em_atendimento: 0, proposta_enviada: 0,
+    total_leads: 0, novos_hoje: 0, em_negociacao: 0,
     followups_hoje: 0, followups_atrasados: 0, concluidos_hoje: 0, fechados: 0, perdidos: 0,
     valor_negociacao: 0, valor_fechado: 0,
   })
-  const [followupsHoje, setFollowupsHoje] = useState<FollowUp[]>([])
   const [leadsRecentes, setLeadsRecentes] = useState<LeadRecente[]>([])
   const [origens, setOrigens] = useState<OrigemCount[]>([])
   const [loading, setLoading] = useState(true)
   const [firstName, setFirstName] = useState('')
 
-  const [period, setPeriod] = useState<Period>('todos')
+  const [period, setPeriod] = useState<Period>('hoje')
   const [customDe, setCustomDe] = useState('')
   const [customAte, setCustomAte] = useState('')
   const [refreshing, setRefreshing] = useState(false)
@@ -132,80 +113,111 @@ export default function Dashboard() {
       if (customAte) end = dayEndISO(customAte)
     }
 
-    // Aplica o intervalo a uma query de leads (created_at)
-    /* eslint-disable @typescript-eslint/no-explicit-any */
-    const inRange = (q: any): any => {
-      let r = q
-      if (start) r = r.gte('created_at', start)
-      if (end) r = r.lte('created_at', end)
-      return r
-    }
-    const countLeads = (build?: (q: any) => any): any => {
-      let q: any = supabase.from('leads').select('*', { count: 'exact', head: true })
-      if (build) q = build(q)
-      return inRange(q)
-    }
-    /* eslint-enable @typescript-eslint/no-explicit-any */
-
     let cancelled = false
     async function load() {
       if (firstLoad.current) setLoading(true)
       else setRefreshing(true)
+
+      // Query para desfechos no período (fechados / perdidos)
+      let fechadosQuery = supabase.from('leads').select('*', { count: 'exact', head: true }).eq('status', 'fechado')
+      let perdidosQuery = supabase.from('leads').select('*', { count: 'exact', head: true }).eq('status', 'perdido')
+      if (start) {
+        fechadosQuery = fechadosQuery.gte('updated_at', start)
+        perdidosQuery = perdidosQuery.gte('updated_at', start)
+      }
+      if (end) {
+        fechadosQuery = fechadosQuery.lte('updated_at', end)
+        perdidosQuery = perdidosQuery.lte('updated_at', end)
+      }
+
+      // Query de total de leads no período
+      let totalLeadsQuery = supabase.from('leads').select('*', { count: 'exact', head: true })
+      if (period !== 'todos') {
+        if (start) totalLeadsQuery = totalLeadsQuery.gte('created_at', start)
+        if (end) totalLeadsQuery = totalLeadsQuery.lte('created_at', end)
+      }
+
       const [
         { count: total_leads },
         { count: novos_hoje },
-        { count: em_atendimento },
-        { count: proposta_enviada },
         { count: followups_hoje },
         { count: followups_atrasados },
         { count: concluidos_hoje },
         { count: fechados },
         { count: perdidos },
-        { data: atividadesHoje },
         { data: recentes },
-        { data: leadsAgg },
+        { data: allLeadsData },
       ] = await Promise.all([
-        countLeads(),
+        totalLeadsQuery,
         supabase.from('leads').select('*', { count: 'exact', head: true }).gte('created_at', dayStartISO(today)),
-        countLeads(q => q.eq('status', 'em_atendimento')),
-        countLeads(q => q.eq('status', 'proposta_enviada')),
+        // Follow-ups
         supabase.from('lead_activities').select('*', { count: 'exact', head: true }).eq('data_agendada', today).eq('status_atividade', 'pendente'),
         supabase.from('lead_activities').select('*', { count: 'exact', head: true }).lt('data_agendada', today).eq('status_atividade', 'pendente'),
         supabase.from('lead_activities').select('*', { count: 'exact', head: true }).eq('status_atividade', 'concluida').gte('concluido_em', dayStartISO(today)).lte('concluido_em', dayEndISO(today)),
-        countLeads(q => q.eq('status', 'fechado')),
-        countLeads(q => q.eq('status', 'perdido')),
-        supabase.from('lead_activities')
-          .select('id, tipo_atividade, hora_agendada, descricao, leads(id, nome, whatsapp)')
-          .eq('data_agendada', today)
-          .eq('status_atividade', 'pendente')
-          .order('hora_agendada'),
+        // Desfechos do período
+        fechadosQuery,
+        perdidosQuery,
+        // Listas
         supabase.from('leads')
           .select('id, nome, status, created_at, foto_url, lead_sources(nome)')
           .order('created_at', { ascending: false })
           .limit(5),
-        inRange(supabase.from('leads').select('valor, status, lead_sources(nome)')),
+        // Agregação financeira e de canais
+        supabase.from('leads').select('valor, status, created_at, updated_at, lead_sources(nome)'),
       ])
 
       if (cancelled) return
 
-      // Soma de valores a partir do conjunto do período
       let valorNeg = 0
       let valorFec = 0
+      let countNeg = 0
       const map: Record<string, number> = {}
-      ;(leadsAgg as unknown as { valor: number | null; status: string | null; lead_sources: unknown }[] ?? []).forEach(l => {
+
+      ;(allLeadsData as unknown as {
+        valor: number | null
+        status: string | null
+        created_at: string
+        updated_at: string
+        lead_sources: unknown
+      }[] ?? []).forEach(l => {
         const v = l.valor ?? 0
-        if (l.status === 'fechado') valorFec += v
-        else if (l.status !== 'perdido') valorNeg += v
-        const src = l.lead_sources as { nome: string } | { nome: string }[] | null
-        const nome = Array.isArray(src) ? (src[0]?.nome ?? 'Sem origem') : (src?.nome ?? 'Sem origem')
-        map[nome] = (map[nome] ?? 0) + 1
+        const isClosed = l.status === 'fechado'
+        const isLost = l.status === 'perdido'
+
+        // 1. Pipeline ativo em negociação (tudo que não está finalizado)
+        if (!isClosed && !isLost) {
+          valorNeg += v
+          countNeg += 1
+        }
+
+        // 2. Vendas fechadas no período selecionado
+        if (isClosed) {
+          if (period === 'todos') {
+            valorFec += v
+          } else {
+            const up = l.updated_at || l.created_at
+            const matchesStart = !start || up >= start
+            const matchesEnd = !end || up <= end
+            if (matchesStart && matchesEnd) {
+              valorFec += v
+            }
+          }
+        }
+
+        // 3. Canais / Origens de leads criados no período
+        const matchesCreatedStart = !start || l.created_at >= start
+        const matchesCreatedEnd = !end || l.created_at <= end
+        if (period === 'todos' || (matchesCreatedStart && matchesCreatedEnd)) {
+          const src = l.lead_sources as { nome: string } | { nome: string }[] | null
+          const nome = Array.isArray(src) ? (src[0]?.nome ?? 'Sem origem') : (src?.nome ?? 'Sem origem')
+          map[nome] = (map[nome] ?? 0) + 1
+        }
       })
 
       setStats({
         total_leads:          total_leads          ?? 0,
         novos_hoje:           novos_hoje           ?? 0,
-        em_atendimento:       em_atendimento       ?? 0,
-        proposta_enviada:     proposta_enviada     ?? 0,
+        em_negociacao:        countNeg,
         followups_hoje:       followups_hoje       ?? 0,
         followups_atrasados:  followups_atrasados  ?? 0,
         concluidos_hoje:      concluidos_hoje      ?? 0,
@@ -214,7 +226,6 @@ export default function Dashboard() {
         valor_negociacao:     valorNeg,
         valor_fechado:        valorFec,
       })
-      setFollowupsHoje((atividadesHoje as unknown as FollowUp[]) ?? [])
       setLeadsRecentes((recentes as unknown as LeadRecente[]) ?? [])
       setOrigens(
         Object.entries(map)
@@ -231,45 +242,26 @@ export default function Dashboard() {
     return () => { cancelled = true }
   }, [period, customDe, customAte])
 
-  const taxaConversao = (stats.fechados + stats.perdidos) > 0
-    ? Math.round((stats.fechados / (stats.fechados + stats.perdidos)) * 100)
-    : null
+  const totalDesfechos = stats.fechados + stats.perdidos
+  const taxaConversao = totalDesfechos > 0
+    ? Math.round((stats.fechados / totalDesfechos) * 100)
+    : 0
 
   const maxOrigemCount = origens[0]?.count ?? 1
 
-  const cardsHoje = [
-    {
-      label: period === 'todos' ? 'Total de leads' : 'Leads no período',
-      value: stats.total_leads,
-      icon: Users,
-      color: 'text-slate-600',
-      bg: 'bg-slate-100',
-      highlight: false,
-      to: '/leads',
-    },
-    {
-      label: 'Novos hoje',
-      value: stats.novos_hoje,
-      icon: UserPlus,
-      color: 'text-slate-600',
-      bg: 'bg-slate-100',
-      highlight: false,
-      to: null,
-    },
-  ]
+  function handleSelectPreset(key: Period) {
+    setPeriod(key)
+    setCustomDe('')
+    setCustomAte('')
+  }
 
-  const cardsPipeline = [
-    { label: 'Em atendimento',  value: stats.em_atendimento,  icon: UserCheck, color: 'text-slate-600', bg: 'bg-slate-100', status: 'em_atendimento'  },
-    { label: 'Proposta enviada',value: stats.proposta_enviada, icon: FileText,  color: 'text-slate-600', bg: 'bg-slate-100', status: 'proposta_enviada' },
-  ]
-
-  const skeletonCard = (
-    <div className="bg-white rounded-xl border border-slate-100 p-5 animate-pulse">
-      <div className="w-8 h-8 rounded-lg bg-slate-100 mb-4" />
-      <div className="h-7 w-12 bg-slate-100 rounded mb-1" />
-      <div className="h-4 w-24 bg-slate-100 rounded" />
-    </div>
-  )
+  const periodLabel = period === 'todos'
+    ? 'Operacional'
+    : period === 'custom'
+      ? customDe && customAte
+        ? `(${formatDate(customDe)} a ${formatDate(customAte)})`
+        : '(personalizado)'
+      : `(${PERIODS.find(p => p.key === period)?.label.toLowerCase()})`
 
   return (
     <Layout>
@@ -291,304 +283,396 @@ export default function Dashboard() {
             {PERIODS.map(p => (
               <button
                 key={p.key}
-                onClick={() => setPeriod(p.key)}
+                onClick={() => handleSelectPreset(p.key)}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
-                  period === p.key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  period === p.key ? 'bg-white text-slate-800 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
                 {p.label}
               </button>
             ))}
           </div>
-          {period === 'custom' && (
-            <div className="flex items-center gap-1.5">
-              <input type="date" value={customDe} onChange={e => setCustomDe(e.target.value)} title="De"
-                className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
-              <span className="text-slate-400 text-sm">até</span>
-              <input type="date" value={customAte} onChange={e => setCustomAte(e.target.value)} title="Até"
-                className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" />
-            </div>
-          )}
+
+          <CustomDateRangePicker
+            startDate={customDe}
+            endDate={customAte}
+            onChange={(start, end) => {
+              if (start || end) {
+                setPeriod('custom')
+                setCustomDe(start)
+                setCustomAte(end)
+              } else {
+                setPeriod('hoje')
+                setCustomDe('')
+                setCustomAte('')
+              }
+            }}
+            label="Filtrar por data"
+            buttonClassName={period === 'custom' ? 'bg-white text-slate-900 border-slate-300 shadow-sm font-semibold' : ''}
+          />
+
           {refreshing && <Loader2 size={14} className="text-slate-400 animate-spin" />}
         </div>
 
         {loading ? (
-          <div className="space-y-6">
-            <div className="grid grid-cols-4 gap-4">{Array.from({ length: 4 }).map((_, i) => <div key={i}>{skeletonCard}</div>)}</div>
-            <div className="grid grid-cols-4 gap-4">{Array.from({ length: 4 }).map((_, i) => <div key={i}>{skeletonCard}</div>)}</div>
-          </div>
+          <DashboardSkeleton />
         ) : (
-          <div className="animate-fade-in">
-            {/* Hoje + Pipeline num card só, ao lado de Valores — grid 2 colunas, mesma altura */}
-            <div className="grid grid-cols-3 gap-4 mb-6 items-stretch">
-              <div className="col-span-2 h-full bg-white rounded-xl border border-slate-100 p-5 flex flex-col justify-center">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Hoje</p>
-                <div className="grid grid-cols-4 gap-4 mb-4">
-                  {cardsHoje.map(({ label, value, icon: Icon, color, bg, highlight, to }) => (
+          <div>
+            {/* Bloco 1 (Operacional) + Bloco 2 (Valores) em Grid Integrado e Sólido */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6 items-stretch">
+
+              {/* Bloco 1: Atividade Diária & Funil de Leads (col-span-2) */}
+              <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden flex flex-col justify-between animate-cascade-item">
+
+                {/* Header do Bloco 1 (h-12 com tipografia limpa) */}
+                <div className="h-12 px-5 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-white">
+                    Atividade & Funil {periodLabel}
+                  </h2>
+                  <span className="text-[11px] font-semibold text-slate-300 bg-slate-800/80 px-2.5 py-0.5 rounded-md border border-slate-700">
+                    Fluxo Comercial
+                  </span>
+                </div>
+
+                {/* Grid Integrado de Métricas com Linhas Nítidas */}
+                <div className="divide-y divide-slate-200 flex-1 flex flex-col justify-between">
+
+                  {/* Linha 1: Leads e Follow-ups */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 flex-1">
+
+                    {/* Célula 1: Total de Leads */}
                     <div
-                      key={label}
-                      onClick={() => to && navigate(to)}
-                      className={`bg-white rounded-xl border p-5 transition-shadow hover:shadow-md ${
-                        highlight ? 'border-red-200 shadow-sm' : 'border-slate-100'
-                      } ${to ? 'cursor-pointer' : ''}`}
+                      onClick={() => navigate('/leads')}
+                      className="p-5 hover:bg-slate-50/70 transition cursor-pointer group flex flex-col justify-between"
                     >
-                      <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center mb-4`}>
-                        <Icon size={16} className={color} />
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-xs">
+                          <Users size={15} />
+                        </div>
+                        <span className="text-[11px] font-semibold text-slate-400 group-hover:text-brand-600 transition flex items-center gap-0.5">
+                          Ver lista <ArrowRight size={11} />
+                        </span>
                       </div>
-                      <p className={`text-2xl font-semibold truncate ${highlight ? 'text-red-600' : 'text-slate-900'}`}>{value}</p>
-                      <p className="text-slate-500 text-sm mt-0.5 truncate">{label}</p>
+                      <div>
+                        <p className="text-2xl font-black text-slate-900 tracking-tight">{stats.total_leads}</p>
+                        <p className="text-xs font-bold text-slate-500 mt-0.5">{period === 'todos' ? 'Total de leads' : 'Leads no período'}</p>
+                      </div>
                     </div>
-                  ))}
 
-                  {/* Atividades: Hoje / Atrasados / Concluídos combinados num único card */}
-                  <div
-                    onClick={() => navigate('/followups')}
-                    className={`col-span-2 bg-white rounded-xl border p-5 transition-shadow hover:shadow-md cursor-pointer ${
-                      stats.followups_atrasados > 0 ? 'border-red-200 shadow-sm' : 'border-slate-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                        <CalendarClock size={16} className="text-slate-600" />
+                    {/* Célula 2: Novos Hoje */}
+                    <div className="p-5 hover:bg-slate-50/70 transition flex flex-col justify-between">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-xs">
+                          <UserPlus size={15} />
+                        </div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
+                          Hoje
+                        </span>
                       </div>
-                      <p className="text-sm font-medium text-slate-600">Follow-ups</p>
-                    </div>
-                    <div className="flex items-center gap-5">
-                      <div className="min-w-0">
-                        <p className="text-2xl font-semibold text-slate-900 truncate">{stats.followups_hoje}</p>
-                        <p className="text-slate-500 text-sm mt-0.5 truncate">Hoje</p>
-                      </div>
-                      <div className="w-px h-9 bg-slate-100 shrink-0" />
-                      <div className="min-w-0">
-                        <p className={`text-2xl font-semibold truncate ${stats.followups_atrasados > 0 ? 'text-red-600' : 'text-slate-900'}`}>{stats.followups_atrasados}</p>
-                        <p className="text-slate-500 text-sm mt-0.5 truncate">Atrasados</p>
-                      </div>
-                      <div className="w-px h-9 bg-slate-100 shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-2xl font-semibold text-emerald-600 truncate">{stats.concluidos_hoje}</p>
-                        <p className="text-slate-500 text-sm mt-0.5 truncate">Concluídos</p>
+                      <div>
+                        <p className="text-2xl font-black text-slate-900 tracking-tight">{stats.novos_hoje}</p>
+                        <p className="text-xs font-bold text-slate-500 mt-0.5">Novos contatos</p>
                       </div>
                     </div>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-4 gap-4">
-                  {cardsPipeline.map(({ label, value, icon: Icon, color, bg, status }) => (
+                    {/* Célula 3: Follow-ups (Ocupa 2 colunas) */}
                     <div
-                      key={label}
-                      onClick={() => navigate(`/leads?status=${status}`)}
-                      className="bg-white rounded-xl border border-slate-100 p-5 transition-shadow hover:shadow-md cursor-pointer group"
+                      onClick={() => navigate('/followups')}
+                      className={`sm:col-span-2 p-5 hover:bg-slate-50/70 transition cursor-pointer group flex flex-col justify-between ${
+                        stats.followups_atrasados > 0 ? 'bg-red-50/20' : ''
+                      }`}
                     >
-                      <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center mb-4`}>
-                        <Icon size={16} className={color} />
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-xs">
+                            <CalendarClock size={15} />
+                          </div>
+                          <span className="text-xs font-bold text-slate-800">Follow-ups</span>
+                        </div>
+                        <span className="text-[11px] font-semibold text-slate-400 group-hover:text-brand-600 transition flex items-center gap-0.5">
+                          Abrir agenda <ArrowRight size={11} />
+                        </span>
                       </div>
-                      <p className="text-slate-900 text-2xl font-semibold truncate">{value}</p>
-                      <div className="flex items-center justify-between mt-0.5 gap-1">
-                        <p className="text-slate-500 text-sm truncate">{label}</p>
-                        <ArrowRight size={12} className="text-slate-300 group-hover:text-slate-400 transition shrink-0" />
-                      </div>
-                    </div>
-                  ))}
 
-                  {/* Finalizados: Fechados / Perdidos combinados num único card */}
-                  <div className="col-span-2 bg-white rounded-xl border border-slate-100 p-5 transition-shadow hover:shadow-md">
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                        <CheckCircle2 size={16} className="text-slate-600" />
-                      </div>
-                      <p className="text-sm font-medium text-slate-600">Finalizados</p>
-                    </div>
-                    <div className="flex items-center gap-5">
-                      <div onClick={() => navigate('/leads?status=fechado')} className="min-w-0 cursor-pointer group">
-                        <p className="text-2xl font-semibold text-emerald-600 truncate">{stats.fechados}</p>
-                        <p className="text-slate-500 text-sm mt-0.5 truncate group-hover:text-slate-700 transition">Fechados</p>
-                      </div>
-                      <div className="w-px h-9 bg-slate-100 shrink-0" />
-                      <div onClick={() => navigate('/leads?status=perdido')} className="min-w-0 cursor-pointer group">
-                        <p className="text-2xl font-semibold text-slate-400 truncate">{stats.perdidos}</p>
-                        <p className="text-slate-500 text-sm mt-0.5 truncate group-hover:text-slate-700 transition">Perdidos</p>
+                      <div className="grid grid-cols-3 gap-2 divide-x divide-slate-200 pt-1">
+                        <div className="pr-2">
+                          <p className="text-xl font-black text-slate-900 tracking-tight">{stats.followups_hoje}</p>
+                          <p className="text-[11px] font-semibold text-slate-500 mt-0.5">Para Hoje</p>
+                        </div>
+                        <div className="px-2">
+                          <p className={`text-xl font-black tracking-tight ${stats.followups_atrasados > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                            {stats.followups_atrasados}
+                          </p>
+                          <p className="text-[11px] font-semibold text-slate-500 mt-0.5">Atrasados</p>
+                        </div>
+                        <div className="pl-2">
+                          <p className="text-xl font-black text-emerald-600 tracking-tight">{stats.concluidos_hoje}</p>
+                          <p className="text-[11px] font-semibold text-slate-500 mt-0.5">Concluídos</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              </div>
 
-              {/* Valores */}
-              <div className="h-full bg-white rounded-xl border border-slate-100 p-5 flex flex-col justify-center">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Valores {period !== 'todos' && '(no período)'}</p>
-                <div className="space-y-4">
-                  <div className="bg-white rounded-xl border border-slate-100 p-5">
-                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center mb-4">
-                      <Wallet size={16} className="text-slate-600" />
-                    </div>
-                    <p className="text-slate-900 text-2xl font-semibold tabular-nums truncate">{formatCurrency(stats.valor_negociacao) || 'R$ 0,00'}</p>
-                    <p className="text-slate-500 text-sm mt-0.5 truncate">Em negociação</p>
                   </div>
-                  <div className="bg-white rounded-xl border border-slate-100 p-5">
-                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center mb-4">
-                      <DollarSign size={16} className="text-slate-600" />
-                    </div>
-                    <p className="text-slate-900 text-2xl font-semibold tabular-nums truncate">{formatCurrency(stats.valor_fechado) || 'R$ 0,00'}</p>
-                    <p className="text-slate-500 text-sm mt-0.5 truncate">Fechado</p>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Taxa de conversão */}
-            {taxaConversao !== null && (
-              <div className="bg-white rounded-xl border border-slate-100 px-6 py-4 mb-6 flex items-center gap-6">
-                <div className="flex items-center gap-2 shrink-0">
-                  <TrendingUp size={15} className={taxaConversao >= 50 ? 'text-emerald-500' : 'text-amber-500'} />
-                  <span className="text-sm font-medium text-slate-700">Taxa de conversão</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  {/* Linha 2: Pipeline Ativo e Desfechos (2 colunas + 2 colunas) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 flex-1">
+
+                    {/* Célula 4: Em Negociação / Funil Ativo */}
                     <div
-                      className={`h-full rounded-full transition-all duration-700 ${taxaConversao >= 50 ? 'bg-emerald-500' : 'bg-amber-400'}`}
-                      style={{ width: `${taxaConversao}%` }}
-                    />
-                  </div>
-                </div>
-                <div className="shrink-0 text-right">
-                  <span className={`text-sm font-semibold ${taxaConversao >= 50 ? 'text-emerald-600' : 'text-amber-600'}`}>{taxaConversao}%</span>
-                  <p className="text-slate-400 text-xs">{stats.fechados} de {stats.fechados + stats.perdidos}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Leads recentes + Por origem */}
-            {(leadsRecentes.length > 0 || origens.length > 0) && (
-              <div className="grid grid-cols-5 gap-4 mb-6">
-
-                {/* Leads recentes */}
-                {leadsRecentes.length > 0 && (
-                  <div className="col-span-3 bg-white rounded-xl border border-slate-100">
-                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-                      <h2 className="text-slate-900 text-sm font-semibold">Leads recentes</h2>
-                      <button
-                        onClick={() => navigate('/leads')}
-                        className="flex items-center gap-1 text-emerald-600 text-xs font-medium hover:text-emerald-700 transition"
-                      >
-                        Ver todos <ArrowRight size={12} />
-                      </button>
+                      onClick={() => navigate('/leads')}
+                      className="p-5 hover:bg-slate-50/70 transition cursor-pointer group flex flex-col justify-between"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-xs">
+                            <Briefcase size={15} />
+                          </div>
+                          <div>
+                            <span className="text-xs font-bold text-slate-800">Em Negociação</span>
+                            <p className="text-[11px] font-medium text-slate-400">Oportunidades ativas no funil</p>
+                          </div>
+                        </div>
+                        <span className="text-[11px] font-semibold text-slate-400 group-hover:text-brand-600 transition flex items-center gap-0.5">
+                          Abrir pipeline <ArrowRight size={11} />
+                        </span>
+                      </div>
+                      <div className="flex items-baseline gap-2">
+                        <p className="text-2xl font-black text-slate-900 tracking-tight">{stats.em_negociacao}</p>
+                        <span className="text-xs font-semibold text-slate-500">leads em aberto</span>
+                      </div>
                     </div>
-                    <div className="divide-y divide-slate-50">
-                      {leadsRecentes.map(lead => (
+
+                    {/* Célula 5: Finalizados / Desfechos */}
+                    <div className="p-5 flex flex-col justify-between">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-xs">
+                            <CheckCircle2 size={15} />
+                          </div>
+                          <span className="text-xs font-bold text-slate-800">Finalizados</span>
+                        </div>
+                        <span className="text-[11px] font-semibold text-slate-400">
+                          Desfechos
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 divide-x divide-slate-200 pt-1">
                         <div
-                          key={lead.id}
-                          onClick={() => navigate(`/leads?lead=${lead.id}`)}
-                          className="px-6 py-3 flex items-center justify-between hover:bg-slate-50 transition cursor-pointer"
+                          onClick={() => navigate('/leads?status=fechado')}
+                          className="pr-3 cursor-pointer group"
                         >
-                          <div className="min-w-0 flex-1 flex items-center gap-3">
-                            <LeadAvatar nome={lead.nome} foto_url={lead.foto_url} size="sm" />
-                            <div className="min-w-0">
-                              <p className="text-slate-900 text-sm font-medium truncate">{lead.nome}</p>
-                              <p className="text-slate-400 text-xs mt-0.5">
-                                {lead.lead_sources?.nome ?? 'Sem origem'} · {formatDateTime(lead.created_at)}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="ml-4 shrink-0">
-                            <StatusBadge status={lead.status} />
-                          </div>
+                          <p className="text-xl font-black text-emerald-600 tracking-tight group-hover:underline">
+                            {stats.fechados}
+                          </p>
+                          <p className="text-[11px] font-semibold text-slate-500 mt-0.5 group-hover:text-slate-800 transition">
+                            Fechados / Vendas
+                          </p>
                         </div>
-                      ))}
+                        <div
+                          onClick={() => navigate('/leads?status=perdido')}
+                          className="pl-3 cursor-pointer group"
+                        >
+                          <p className="text-xl font-black text-slate-400 tracking-tight group-hover:underline">
+                            {stats.perdidos}
+                          </p>
+                          <p className="text-[11px] font-semibold text-slate-500 mt-0.5 group-hover:text-slate-800 transition">
+                            Perdidos
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )}
 
-                {/* Por origem */}
-                {origens.length > 0 && (
-                  <div className="col-span-2 bg-white rounded-xl border border-slate-100">
-                    <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-                      <Globe size={14} className="text-slate-400" />
-                      <h2 className="text-slate-900 text-sm font-semibold">Por origem</h2>
-                    </div>
-                    <div className="px-6 py-4 space-y-4">
-                      {origens.map(({ nome, count }) => (
-                        <div key={nome}>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-slate-700 text-xs font-medium truncate max-w-[140px]">{nome}</span>
-                            <span className="text-slate-700 text-sm font-semibold tabular-nums ml-2">{count}</span>
-                          </div>
-                          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-emerald-400 rounded-full transition-all duration-500"
-                              style={{ width: `${Math.round((count / maxOrigemCount) * 100)}%` }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
                   </div>
-                )}
+
+                </div>
 
               </div>
-            )}
-          </div>
-        )}
 
-        {/* Follow-ups de hoje */}
-        <div className="bg-white rounded-xl border border-slate-100">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <h2 className="text-slate-900 text-sm font-semibold">Follow-ups de hoje</h2>
-              {followupsHoje.length > 0 && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">
-                  {followupsHoje.length}
-                </span>
-              )}
-            </div>
-            <button
-              onClick={() => navigate('/followups')}
-              className="flex items-center gap-1 text-emerald-600 text-xs font-medium hover:text-emerald-700 transition"
-            >
-              Ver todos <ArrowRight size={12} />
-            </button>
-          </div>
+              {/* Bloco 2: Métricas Financeiras & Performance (col-span-1) */}
+              <div
+                className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden flex flex-col justify-between animate-cascade-item"
+                style={{ animationDelay: '100ms' }}
+              >
 
-          {followupsHoje.length === 0 ? (
-            <div className="px-6 py-12 text-center">
-              <CalendarClock size={28} className="text-slate-200 mx-auto mb-3" />
-              <p className="text-slate-600 text-sm font-medium">Agenda limpa para hoje!</p>
-              <p className="text-slate-400 text-xs mt-1">Nenhum follow-up pendente agendado.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-50">
-              {followupsHoje.map(item => (
-                <div
-                  key={item.id}
-                  onClick={() => item.leads?.id && navigate(`/leads?lead=${item.leads.id}`)}
-                  className="px-6 py-3.5 flex items-center justify-between hover:bg-slate-50 transition cursor-pointer"
-                >
-                  <div className="min-w-0">
-                    <p className="text-slate-900 text-sm font-medium truncate">{item.leads?.nome ?? '—'}</p>
-                    <p className="text-slate-500 text-xs mt-0.5">
-                      {activityLabel[item.tipo_atividade] ?? item.tipo_atividade}
-                      {item.descricao ? ` · ${item.descricao}` : ''}
+                {/* Header do Bloco 2 (h-12 com tipografia limpa) */}
+                <div className="h-12 px-5 bg-emerald-900 border-b border-emerald-800 flex items-center justify-between">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-white">
+                    Valores & Resultados
+                  </h2>
+                  <span className="text-[11px] font-semibold text-emerald-200 bg-emerald-800/80 px-2.5 py-0.5 rounded-md border border-emerald-700/80">
+                    BRL (R$)
+                  </span>
+                </div>
+
+                {/* 3 Células Verticais Integradas com Linhas Nítidas */}
+                <div className="divide-y divide-slate-200 flex-1 flex flex-col justify-between">
+
+                  {/* Célula 1: Em Negociação */}
+                  <div className="p-4 sm:p-4.5 hover:bg-slate-50/50 transition flex flex-col justify-center">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-bold text-slate-700">
+                        Em Negociação
+                      </span>
+                      <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                        <Wallet size={13} />
+                      </div>
+                    </div>
+                    <p className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight tabular-nums">
+                      {formatCurrency(stats.valor_negociacao) || 'R$ 0,00'}
+                    </p>
+                    <p className="text-[11px] font-medium text-slate-400 mt-0.5">
+                      Volume em aberto no funil
                     </p>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0 ml-4">
-                    <span className="text-slate-400 text-xs tabular-nums">{item.hora_agendada?.slice(0, 5) ?? '--:--'}</span>
-                    {item.leads?.whatsapp && (
-                      <a
-                        href={whatsappLink(item.leads.whatsapp)}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={e => e.stopPropagation()}
-                        className="text-emerald-400 hover:text-emerald-600 transition"
-                        title="Abrir no WhatsApp"
-                      >
-                        <MessageCircle size={14} />
-                      </a>
-                    )}
+
+                  {/* Célula 2: Vendas Fechadas */}
+                  <div className="p-4 sm:p-4.5 hover:bg-slate-50/50 transition flex flex-col justify-center bg-emerald-50/20">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-bold text-emerald-800">
+                        Vendas Fechadas
+                      </span>
+                      <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                        <DollarSign size={13} />
+                      </div>
+                    </div>
+                    <p className="text-xl sm:text-2xl font-black text-emerald-700 tracking-tight tabular-nums">
+                      {formatCurrency(stats.valor_fechado) || 'R$ 0,00'}
+                    </p>
+                    <p className="text-[11px] font-medium text-emerald-600/80 mt-0.5">
+                      Receita gerada no período
+                    </p>
                   </div>
+
+                  {/* Célula 3: Taxa de Conversão */}
+                  <div className="p-4 sm:p-4.5 hover:bg-slate-50/50 transition flex flex-col justify-center">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-bold text-slate-700">
+                        Taxa de Conversão
+                      </span>
+                      <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                        <TrendingUp size={13} />
+                      </div>
+                    </div>
+                    <div className="flex items-baseline justify-between">
+                      <p className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight tabular-nums">
+                        {taxaConversao}%
+                      </p>
+                      <span className="text-[11px] font-semibold text-slate-500">
+                        {totalDesfechos > 0 ? `${stats.fechados} de ${totalDesfechos} ganhos` : 'Sem desfechos'}
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1.5">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ${
+                          taxaConversao >= 50 ? 'bg-emerald-500' : taxaConversao > 0 ? 'bg-amber-500' : 'bg-slate-200'
+                        }`}
+                        style={{ width: `${Math.max(taxaConversao, totalDesfechos > 0 ? 4 : 0)}%` }}
+                      />
+                    </div>
+                  </div>
+
                 </div>
-              ))}
+
+              </div>
+
             </div>
-          )}
-        </div>
+
+            {/* Grade Integrada: Leads Recentes (col-span-2) + Por Origem (col-span-1) */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6 items-stretch">
+
+              {/* Coluna 1 (2/3): Leads Recentes */}
+              <div
+                className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden flex flex-col justify-between animate-cascade-item"
+                style={{ animationDelay: '180ms' }}
+              >
+                <div className="h-12 px-5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-white">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-white">Leads Recentes</h2>
+                  <button
+                    onClick={() => navigate('/leads')}
+                    className="flex items-center gap-1 text-slate-300 hover:text-white text-xs font-bold transition cursor-pointer"
+                  >
+                    Ver todos <ArrowRight size={11} />
+                  </button>
+                </div>
+
+                {leadsRecentes.length === 0 ? (
+                  <div className="p-8 text-center flex-1 flex flex-col items-center justify-center">
+                    <Users size={24} className="text-slate-300 mb-2" />
+                    <p className="text-xs font-semibold text-slate-600">Nenhum lead recente</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Os novos contatos aparecerão aqui.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-200 flex-1">
+                    {leadsRecentes.map((lead, idx) => (
+                      <div
+                        key={lead.id}
+                        onClick={() => navigate(`/leads?lead=${lead.id}`)}
+                        className="px-5 py-3 flex items-center justify-between hover:bg-slate-50/70 transition cursor-pointer animate-cascade-item"
+                        style={{ animationDelay: `${200 + idx * 40}ms` }}
+                      >
+                        <div className="min-w-0 flex-1 flex items-center gap-2.5 mr-2">
+                          <LeadAvatar nome={lead.nome} foto_url={lead.foto_url} size="sm" />
+                          <div className="min-w-0">
+                            <p className="text-slate-900 text-xs font-bold truncate">{lead.nome}</p>
+                            <p className="text-slate-400 text-[11px] mt-0.5 truncate">
+                              {lead.lead_sources?.nome ?? 'Sem origem'} · {formatDateTime(lead.created_at)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="shrink-0">
+                          <StatusBadge status={lead.status} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Coluna 2 (1/3): Por Origem */}
+              <div
+                className="lg:col-span-1 bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden flex flex-col justify-between animate-cascade-item"
+                style={{ animationDelay: '260ms' }}
+              >
+                <div className="h-12 px-5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-white">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-white">Por Origem</h2>
+                  <span className="text-[11px] font-semibold text-slate-300 bg-slate-800/80 px-2.5 py-0.5 rounded-md border border-slate-700">
+                    {origens.length > 0 ? `${origens.length} canais` : 'No período'}
+                  </span>
+                </div>
+
+                {origens.length === 0 ? (
+                  <div className="p-8 text-center flex-1 flex flex-col items-center justify-center">
+                    <Globe size={24} className="text-slate-300 mb-2" />
+                    <p className="text-xs font-semibold text-slate-600">Sem origens no período</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Canais de captação ativos aparecerão aqui.</p>
+                  </div>
+                ) : (
+                  <div className="px-5 py-3.5 space-y-3.5 flex-1 flex flex-col justify-center">
+                    {origens.map(({ nome, count }, idx) => (
+                      <div
+                        key={nome}
+                        className="animate-cascade-item"
+                        style={{ animationDelay: `${280 + idx * 40}ms` }}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-slate-700 text-xs font-semibold truncate max-w-[130px]">{nome}</span>
+                          <span className="text-slate-900 text-xs font-bold tabular-nums ml-2">{count} leads</span>
+                        </div>
+                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-slate-900 rounded-full transition-all duration-500"
+                            style={{ width: `${Math.round((count / maxOrigemCount) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+        )}
 
       </div>
     </Layout>

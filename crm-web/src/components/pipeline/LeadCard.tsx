@@ -3,7 +3,7 @@ import { useDraggable } from '@dnd-kit/core'
 
 import { Clock, AlertCircle, User, Tag, Globe, DollarSign } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { formatWhatsApp, whatsappLink, localDateStr, formatDateTime, formatCurrency } from '../../lib/helpers'
+import { formatWhatsApp, whatsappLink, isOverdue as isOverdueHelper, formatDateTime, formatCurrency } from '../../lib/helpers'
 import WhatsAppIcon from '../WhatsAppIcon'
 import LeadAvatar from '../LeadAvatar'
 import type { LeadWithRelations } from '../../types'
@@ -25,11 +25,12 @@ function LeadCard({ lead, disabled = false }: LeadCardProps) {
     opacity: isDragging ? 0.4 : 1,
   }
 
-  const today = localDateStr()
   const followupDate = lead.proximo_followup
     ? new Date(lead.proximo_followup).toLocaleDateString('sv')
     : null
-  const isOverdue = followupDate && followupDate < today
+  const isOverdue = lead.proximo_followup
+    ? isOverdueHelper(lead.proximo_followup.slice(0, 10), lead.proximo_followup.slice(11, 16))
+    : false
 
   const followupLabel = followupDate
     ? new Date(lead.proximo_followup!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
@@ -47,9 +48,9 @@ function LeadCard({ lead, disabled = false }: LeadCardProps) {
       ref={setNodeRef}
       style={style}
       className={`
-        bg-white rounded-xl border border-slate-100 shadow-soft
-        transition-shadow cursor-pointer select-none
-        hover:shadow-md hover:border-slate-200
+        bg-white rounded-xl border border-slate-200/90 shadow-card
+        transition-all cursor-pointer select-none
+        hover:shadow-card-hover hover:border-slate-300
         ${isDragging ? 'shadow-xl ring-2 ring-emerald-400 ring-opacity-50' : ''}
       `}
       onDoubleClick={handleDoubleClick}
