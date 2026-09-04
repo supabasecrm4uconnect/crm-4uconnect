@@ -4,7 +4,8 @@
 
 ## Estado atual
 
-- O `crm-web` de produção permanece inalterado por esta correção.
+- O `crm-web` possui uma alteração pendente de deploy para passar a usar
+  `public/favicon.png`; nenhuma regra funcional do aplicativo foi modificada.
 - A próxima versão pública da extensão é 1.0.2, sucessora da 1.0.1 atualmente publicada; ela ainda não foi enviada à Chrome Web Store pelo Codex.
 - A branch local `release/chrome-store-v1.0.2` contém a candidata consolidada e sua documentação; a criação de contato foi validada em campo.
 - Os números 1.0.3 a 1.0.12 registrados abaixo identificam checkpoints internos
@@ -97,9 +98,18 @@
   mantêm ícones e textos centralizados.
 - Nenhuma mudança desta versão altera schema, tabelas, colunas, tipos ou RLS.
 
+## Favicon compartilhado
+
+- O CRM Web referencia `/favicon.png` no ícone comum e no `apple-touch-icon`.
+- A arte fornecida em `crm-web/public/favicon.png` tem 126×126 pixels.
+- A extensão usa a mesma arte em `crm-extension/favicon.png`, centralizada em uma
+  tela transparente de 128×128 pixels para atender ao pacote da Chrome Web Store.
+- O build de produção do CRM Web concluiu com sucesso após a troca.
+
 ## Próximo passo
 
 - [x] Validar localmente o botão condicional, Valor, limite da Observação, tabs e
   alteração de nome da versão pública candidata 1.0.2.
+- [x] Unificar o favicon do site e da extensão e recriar o pacote 1.0.2.
 - [ ] Enviar `crm-extension/dist/connect-crm-1.0.2.zip` na aba **Pacote** do item
   Connect CRM no Chrome Web Store Developer Dashboard e submeter para análise.

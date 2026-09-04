@@ -41,3 +41,7 @@ Nunca autorizar `https://*.vercel.app` e nunca usar uma chave `service_role` na 
 
 O ZIP da versão 1.0.2 é `crm-extension/dist/connect-crm-1.0.2.zip`. Ele contém
 somente `manifest.json`, scripts, CSS e imagens necessários à extensão.
+
+Antes de gerar o ZIP, confirmar que `crm-extension/favicon.png` representa a
+mesma arte de `crm-web/public/favicon.png` e possui 128×128 pixels, tamanho usado
+na instalação e na Chrome Web Store.

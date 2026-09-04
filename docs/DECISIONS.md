@@ -184,3 +184,28 @@ passam a dividir igualmente toda a largura disponível.
   do CRM, evitando informar que dados já persistidos foram perdidos.
 - O botão de criação de um contato ainda não cadastrado permanece visível, pois
   salvar o novo lead é a ação principal desse estado.
+
+## ADR-007 — Favicon unificado entre CRM Web e extensão
+
+- **Data:** 04/09/2026
+- **Status:** Aceita
+
+### Contexto
+
+O CRM Web ainda apontava para `favicon.svg`, enquanto a extensão utilizava outro
+arquivo PNG. Isso fazia o navegador e a extensão exibirem identidades diferentes.
+
+### Decisão
+
+Usar `crm-web/public/favicon.png` como fonte visual única. O CRM Web referencia
+diretamente `/favicon.png`. Para atender ao tamanho usado na instalação e na
+Chrome Web Store, a extensão recebe a mesma arte centralizada em um PNG de
+128×128 pixels, com apenas um pixel transparente acrescentado ao redor da imagem
+original de 126×126 pixels.
+
+### Consequências
+
+- Site, página de extensões e Chrome Web Store passam a usar a mesma identidade.
+- O desenho original não é recortado nem recriado.
+- Toda troca futura do favicon deve atualizar o PNG público do site, o PNG da
+  extensão e o pacote ZIP enviado à loja.
