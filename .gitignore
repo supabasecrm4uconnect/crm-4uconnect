@@ -5,6 +5,10 @@
 crm-web/dist/
 dist/
 dist-ssr/
+*.zip
+
+# Mídia local não utilizada pela aplicação
+crm-web/public/cafe.mp4
 
 # ===== Variáveis de ambiente / segredos =====
 # Em produção use o painel da Vercel. NUNCA versione .env.
