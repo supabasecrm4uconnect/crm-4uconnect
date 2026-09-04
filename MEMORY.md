@@ -5,7 +5,7 @@
 ## Estado atual
 
 - O `origin/main` foi promovido com o favicon circular do CRM Web e a candidata
-  1.0.2 da extensão; o deploy automático da Vercel deve ser confirmado após o push.
+  1.0.2 da extensão; o deploy automático da Vercel foi confirmado em produção.
 - A próxima versão pública da extensão é 1.0.2, sucessora da 1.0.1 atualmente publicada; ela ainda não foi enviada à Chrome Web Store pelo Codex.
 - A branch local `release/chrome-store-v1.0.2` contém a candidata consolidada e
   é a origem da promoção para `origin/main`; a criação de contato foi validada em campo.
@@ -112,7 +112,7 @@
 - [x] Validar localmente o botão condicional, Valor, limite da Observação, tabs e
   alteração de nome da versão pública candidata 1.0.2.
 - [x] Unificar o favicon do site e da extensão e recriar o pacote 1.0.2.
-- [ ] Confirmar que o deploy da Vercel originado por `main` concluiu e que o novo
+- [x] Confirmar que o deploy da Vercel originado por `main` concluiu e que o novo
   favicon aparece em `https://connect-crm.vercel.app`.
 - [ ] Enviar `crm-extension/dist/connect-crm-1.0.2.zip` na aba **Pacote** do item
   Connect CRM no Chrome Web Store Developer Dashboard e submeter para análise.
