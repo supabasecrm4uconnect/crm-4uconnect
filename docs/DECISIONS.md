@@ -47,3 +47,26 @@ da extensão. Não será usado um curinga `*.vercel.app`.
 - Sites Vercel não relacionados continuam impedidos de gravar ou limpar a sessão.
 - Toda futura mudança de domínio deve atualizar conjuntamente `manifest.json`,
   `background.js` e `content.js`.
+
+## ADR-003 — Mensagem única durante o salvamento completo
+
+- **Data:** 04/09/2026
+- **Status:** Aceita
+
+### Contexto
+
+O cadastro envolve duas operações sequenciais: gravar o lead no CRM e salvar o
+contato pelo formulário nativo do WhatsApp. Exibir as etapas internas tornaria a
+interface mais técnica e revelaria a automação que a sidebar deve cobrir.
+
+### Decisão
+
+Exibir um único overlay bloqueante com spinner e a mensagem **Salvando lead...**
+durante as duas operações. A interface só retorna quando a automação do WhatsApp
+terminar ou quando ocorrer uma falha na gravação do CRM.
+
+### Consequências
+
+- O usuário recebe retorno imediato após o clique sem acompanhar detalhes internos.
+- O drawer nativo permanece coberto durante todo o fluxo.
+- O tempo visível da mensagem inclui também a sincronização do contato.

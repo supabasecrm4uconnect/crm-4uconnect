@@ -649,7 +649,7 @@
     pendingFollowups: 0,
     avisosList: [],  // lista detalhada de atividades pendentes para a aba Avisos Gerais
     current: { phone: null, name: null, lead: null, photo: null },
-    ui: { view: 'loading', saving: false, error: '', success: '', tab: 'dados', animate: false },
+    ui: { view: 'loading', saving: false, leadSaveOverlay: false, error: '', success: '', tab: 'dados', animate: false },
     form: { nome: '', status: 'novo_lead', origem_id: '', segmento_id: '', observacao: '', valor: '', tags: [] },
     followupForm: { tipo: 'enviar_mensagem', data: '', hora: '', descricao: '' },
   };
@@ -742,6 +742,12 @@
       '</div>',
       '</div>',
       '<div class="crm-content" id="crm-content"></div>',
+      '<div id="crm-save-overlay" class="crm-save-overlay" role="status" aria-live="polite" aria-hidden="true">',
+      '<div class="crm-save-overlay-card">',
+      '<span class="crm-save-overlay-spinner" aria-hidden="true"></span>',
+      '<p>Salvando lead...</p>',
+      '</div>',
+      '</div>',
     ].join('');
     document.body.appendChild(root);
 
@@ -1872,6 +1878,15 @@
     content.innerHTML = html;
     attachEvents();
 
+    var saveOverlay = document.getElementById('crm-save-overlay');
+    var sidebarToggle = document.getElementById('crm-4u-toggle');
+    var overlayAtivo = ui.leadSaveOverlay === true;
+    if (saveOverlay) {
+      saveOverlay.classList.toggle('crm-save-overlay-visible', overlayAtivo);
+      saveOverlay.setAttribute('aria-hidden', overlayAtivo ? 'false' : 'true');
+    }
+    if (sidebarToggle) sidebarToggle.classList.toggle('crm-toggle-saving', overlayAtivo);
+
     // Stagger sequencial — SÓ quando solicitado (abrir/expandir/trocar aba/trocar
     // contato). Em saves/polling/atualizações o flag fica false → sem fade-in repetido.
     if (state.ui.animate) {
@@ -2063,6 +2078,7 @@
     if (e && e.preventDefault) e.preventDefault();
     flushTagInput();
     state.ui.saving = true;
+    state.ui.leadSaveOverlay = true;
     state.ui.error = '';
     render();
 
@@ -2080,6 +2096,7 @@
         state.form = { nome: existing.nome, status: existing.status, origem_id: existing.origem_id || '', segmento_id: existing.segmento_id || '', observacao: existing.observacao || '', valor: existing.valor != null ? String(existing.valor) : '', tags: Array.isArray(existing.tags) ? existing.tags : [] };
         state.ui.view = 'existing-lead';
         state.ui.saving = false;
+        state.ui.leadSaveOverlay = false;
         state.ui.error = 'Lead já existe — carregado.';
         render();
         return;
@@ -2099,6 +2116,7 @@
       }, token).then(function (newLead) {
         if (!newLead || newLead.code) {
           state.ui.saving = false;
+          state.ui.leadSaveOverlay = false;
           state.ui.error = 'Erro ao salvar. Tente novamente.';
           render();
           return;
@@ -2112,14 +2130,10 @@
         }, token).then(function () {
           state.current.lead = newLead;
           state.ui.view = 'existing-lead';
-          state.ui.saving = false;
-          state.ui.success = 'Lead salvo com sucesso!';
           if (typeof crmLogger !== 'undefined') crmLogger.info('lead_criado', 'Novo lead criado com sucesso no CRM', {
             modulo: 'content.js',
             contexto: { lead_id: newLead.id, status: newLead.status }
           });
-          render();
-
           // Atualiza o cache local (todas as variantes do número) e injeta o badge na lista
           if (newLead.whatsapp) {
             var entry = { id: newLead.id, nome: newLead.nome, whatsapp: newLead.whatsapp, status: newLead.status };
@@ -2129,9 +2143,13 @@
 
           // Automate saving the contact natively in WhatsApp Web
           var leadNome = newLead.nome || state.form.nome || state.current.name || 'Contato';
-          automateWhatsAppSaveContact(leadNome);
-
-          setTimeout(function () { state.ui.success = ''; render(); }, 3000);
+          return automateWhatsAppSaveContact(leadNome).then(function () {
+            state.ui.saving = false;
+            state.ui.leadSaveOverlay = false;
+            state.ui.success = 'Lead salvo com sucesso!';
+            render();
+            setTimeout(function () { state.ui.success = ''; render(); }, 3000);
+          });
         });
       });
     }).catch(function (err) {
@@ -2142,6 +2160,7 @@
         contexto: { phone: state.current.phone, status: err && err.status }
       });
       state.ui.saving = false;
+      state.ui.leadSaveOverlay = false;
       if (err && err.isUnauthorized) { handleUnauthorized(); } else { state.ui.error = 'Erro de conexão.'; render(); }
     });
   }

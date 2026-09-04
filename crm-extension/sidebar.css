@@ -54,6 +54,10 @@
   right: 0;
 }
 
+#crm-4u-toggle.crm-toggle-saving {
+  pointer-events: none;
+}
+
 /* Header */
 .crm-header {
   display: flex;
@@ -159,6 +163,67 @@
   overflow-y: auto;
   padding: 16px;
   scroll-behavior: smooth;
+}
+
+.crm-save-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(248, 250, 252, 0.96);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.16s ease, visibility 0.16s ease;
+}
+
+.crm-save-overlay-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.crm-save-overlay-card {
+  width: min(280px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 28px 24px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.14);
+}
+
+.crm-save-overlay-visible .crm-save-overlay-card {
+  animation: crm-save-overlay-enter 0.2s ease both;
+}
+
+.crm-save-overlay-card p {
+  margin: 0;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.crm-save-overlay-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid #d1fae5;
+  border-top-color: #10b981;
+  border-radius: 50%;
+  animation: crm-spin 0.7s linear infinite;
+}
+
+@keyframes crm-save-overlay-enter {
+  from { opacity: 0; transform: translateY(5px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes crm-content-appear {
