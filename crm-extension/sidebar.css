@@ -551,6 +551,7 @@
   min-width: 200px;
   max-width: 320px;
   max-height: 240px;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -558,17 +559,29 @@
   padding: 6px;
 }
 
+.crm-custom-select-menu.is-scrollable {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-color: #10b981 #f1f5f9;
+}
+
 .crm-custom-select-menu::-webkit-scrollbar {
-  width: 6px;
+  display: block;
+  width: 10px;
+  -webkit-appearance: none;
 }
 
 .crm-custom-select-menu::-webkit-scrollbar-track {
-  background: transparent;
+  border-radius: 999px;
+  background: #f1f5f9;
 }
 
 .crm-custom-select-menu::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border: 2px solid #f1f5f9;
   border-radius: 999px;
   background: #10b981;
+  background-clip: padding-box;
 }
 
 .crm-custom-select-menu::-webkit-scrollbar-thumb:hover {
@@ -961,7 +974,11 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  overflow-y: auto;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #10b981 #f1f5f9;
   padding: 4px 2px 4px 4px;
   border: 1px solid #f1f5f9;
   border-radius: 12px;
@@ -969,16 +986,22 @@
 }
 
 .crm-time-scroll::-webkit-scrollbar {
-  width: 6px;
+  display: block;
+  width: 10px;
+  -webkit-appearance: none;
 }
 
 .crm-time-scroll::-webkit-scrollbar-track {
-  background: transparent;
+  border-radius: 999px;
+  background: #f1f5f9;
 }
 
 .crm-time-scroll::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border: 2px solid #f1f5f9;
   border-radius: 999px;
   background: #10b981;
+  background-clip: padding-box;
 }
 
 .crm-time-option,

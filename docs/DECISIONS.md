@@ -103,6 +103,9 @@ sublinhado usado no drawer de leads do CRM.
   opções de status preservam os indicadores de cor.
 - Listboxes longos mantêm altura máxima de 240px e rolagem vertical, sem reduzir
   a altura individual das opções.
+- Menus com mais de cinco opções já abrem em modo rolável, reservando espaço para
+  uma barra sempre visível com trilho `slate-100` e indicador esmeralda; as
+  colunas de hora e minuto aplicam o mesmo comportamento.
 - O calendário oferece navegação mensal e ações **Limpar** e **Hoje** sem depender
   do seletor nativo do navegador.
 - O horário oferece colunas de hora/minuto, ação **Agora**, atalhos e confirmação,

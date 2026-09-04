@@ -426,6 +426,7 @@
       return normalizeControlValue(item.value) === selectedValue;
     }) || safeItems[0] || { value: '', label: 'Selecionar' };
     var selectedDot = selectedItem.dotColor || '';
+    var isScrollable = safeItems.length > 5;
 
     var nativeOptions = safeItems.map(function (item) {
       var itemValue = normalizeControlValue(item.value);
@@ -455,7 +456,7 @@
             '<span class="crm-custom-select-display" id="' + id + '-display">' + escapeHtml(selectedItem.label) + '</span>' +
           '</span>' + CONTROL_CHEVRON +
         '</button>' +
-        '<div class="crm-custom-select-menu" role="listbox" aria-labelledby="' + id + '-label" hidden>' + options + '</div>' +
+        '<div class="crm-custom-select-menu' + (isScrollable ? ' is-scrollable' : '') + '" role="listbox" aria-labelledby="' + id + '-label" hidden>' + options + '</div>' +
       '</div>' +
     '</div>';
   }

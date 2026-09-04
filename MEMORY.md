@@ -5,8 +5,8 @@
 ## Estado atual
 
 - O `crm-web` de produção permanece inalterado por esta correção.
-- A versão local da extensão passa a ser 1.0.9; esta correção ainda não foi enviada ao GitHub nem à Chrome Web Store pelo Codex.
-- A branch local `fix/whatsapp-contact-save-v1.0.9` contém a correção da extensão e sua documentação; a criação de contato foi validada em campo.
+- A versão local da extensão passa a ser 1.0.10; esta correção ainda não foi enviada ao GitHub nem à Chrome Web Store pelo Codex.
+- A branch local `fix/whatsapp-contact-save-v1.0.10` contém a correção da extensão e sua documentação; a criação de contato foi validada em campo.
 
 ## Gotcha: salvamento de contatos no WhatsApp Web
 
@@ -59,6 +59,10 @@
   pontos coloridos adotados no CRM.
 - A versão 1.0.9 impede que opções de listboxes longos encolham dentro do menu:
   após 240px, a lista usa scroll vertical verde, como no CRM Web.
+- A versão 1.0.10 marca menus com mais de cinco opções como roláveis desde a
+  abertura (`overflow-y: scroll`), reserva o espaço da barra e mantém trilho e
+  indicador visíveis; isso torna explícito que há mais itens abaixo. As colunas
+  de hora e minuto seguem a mesma regra.
 
 ## Título sincronizado com o CRM Web
 
@@ -74,4 +78,4 @@
 
 - [ ] Recarregar a extensão local e a aba do WhatsApp; conferir listboxes,
   calendário, date picker, time picker, ícones, abas e o fluxo completo de
-  salvamento antes de publicar a versão 1.0.9.
+  salvamento antes de publicar a versão 1.0.10.
