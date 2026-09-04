@@ -1,15 +1,16 @@
 /**
- * logger.js — Módulo de logs da extensão For You Connect
+ * logger.js — Módulo de logs da extensão Connect CRM
  *
  * Script clássico (sem ES modules). Expõe window.crmLogger para uso em
  * content.js (IIFE) e via importScripts() em background.js.
  *
  * Regras:
- *  - Nunca logar conteúdo de conversas ou mensagens do WhatsApp
- *  - Mascarar números de telefone (mostra apenas 4 últimos dígitos)
- *  - DEBUG só enviado se debug_mode === true (lido do Supabase no init)
- *  - Falhas de envio: enfileirar localmente e retentar no init
- *  - Erros no próprio logger não quebram a extensão (try/catch total)
+ *  - Envia ao Supabase APENAS falhas e alertas reais (ERROR e WARN).
+ *  - INFO e DEBUG permanecem estritamente no console local do navegador (zero chamadas de rede/banco).
+ *  - Nunca logar conteúdo de conversas ou mensagens do WhatsApp.
+ *  - Mascarar números de telefone (mantém apenas 4 últimos dígitos).
+ *  - Falhas de rede: enfileira localmente e retenta na próxima inicialização.
+ *  - Erros no próprio logger nunca quebram a extensão (try/catch defensivo).
  */
 
 (function (global) {
@@ -20,13 +21,11 @@
 
   var SESSION_KEY = 'crm_4u_session';
   var QUEUE_KEY   = 'crm_logger_queue';
-  var DEBUG_KEY   = 'debug_mode';
 
   /* ---- Utilitários ---- */
 
   function maskPhone(str) {
     if (typeof str !== 'string') return str;
-    // Mascara sequências numéricas de 8+ dígitos, mantendo os 4 últimos
     return str.replace(/\d{4,}(\d{4})/g, '*****$1');
   }
 
@@ -42,12 +41,19 @@
     try { return chrome.runtime.getManifest().version; } catch (e) { return null; }
   }
 
-  function getUserAgent() {
-    try { return navigator.userAgent; } catch (e) { return null; }
-  }
-
-  function getCurrentUrl() {
-    try { return (typeof location !== 'undefined') ? location.href : null; } catch (e) { return null; }
+  function getBrowserName() {
+    try {
+      var ua = navigator.userAgent;
+      if (!ua) return 'Desconhecido';
+      if (ua.indexOf('Edg/') !== -1) return 'Edge';
+      if (ua.indexOf('Chrome/') !== -1) return 'Chrome';
+      if (ua.indexOf('Firefox/') !== -1) return 'Firefox';
+      if (ua.indexOf('Safari/') !== -1) return 'Safari';
+      if (ua.indexOf('OPR/') !== -1) return 'Opera';
+      return 'Outro';
+    } catch (e) {
+      return 'Desconhecido';
+    }
   }
 
   /* ---- Sessão ---- */
@@ -62,25 +68,14 @@
     }
   }
 
-  function getDebugMode(cb) {
-    try {
-      chrome.storage.local.get([DEBUG_KEY], function (r) {
-        cb(r[DEBUG_KEY] === true);
-      });
-    } catch (e) {
-      cb(false);
-    }
-  }
-
-  /* ---- Fila local ---- */
+  /* ---- Fila local para retentativa ---- */
 
   function enqueue(entry) {
     try {
       chrome.storage.local.get([QUEUE_KEY], function (r) {
         var queue = Array.isArray(r[QUEUE_KEY]) ? r[QUEUE_KEY] : [];
         queue.push(entry);
-        // Limita a 100 entradas para não abusar do storage
-        if (queue.length > 100) queue = queue.slice(-100);
+        if (queue.length > 50) queue = queue.slice(-50);
         chrome.storage.local.set({ [QUEUE_KEY]: queue });
       });
     } catch (e) {
@@ -126,49 +121,65 @@
     }
   }
 
-  /* ---- API pública ---- */
-
-  function log(nivel, acao, mensagem, opts) {
-    try {
-      var options = opts || {};
-      var entry = {
-        nivel:           nivel,
-        modulo:          options.modulo || 'content.js',
-        acao:            maskPhone(String(acao)),
-        mensagem:        maskPhone(String(mensagem)),
-        erro_tecnico:    options.erro_tecnico ? maskPhone(String(options.erro_tecnico)) : null,
-        contexto:        options.contexto ? sanitize(options.contexto) : null,
-        versao_extensao: getVersion(),
-        navegador:       getUserAgent(),
-        url:             getCurrentUrl(),
-      };
-      sendOrQueue(entry);
-    } catch (e) {
-      // Nunca quebra a extensão
-    }
-  }
+  /* ---- API pública do Logger ---- */
 
   var crmLogger = {
-    error: function (acao, mensagem, opts) { log('ERROR', acao, mensagem, opts); },
-    warn:  function (acao, mensagem, opts) { log('WARN',  acao, mensagem, opts); },
-    info:  function (acao, mensagem, opts) { log('INFO',  acao, mensagem, opts); },
+    error: function (acao, mensagem, opts) {
+      try {
+        var options = opts || {};
+        console.error('[Connect CRM][' + acao + ']', mensagem, options.erro_tecnico || '');
+        var entry = {
+          nivel:           'ERROR',
+          modulo:          options.modulo || 'content.js',
+          acao:            maskPhone(String(acao)),
+          mensagem:        maskPhone(String(mensagem)),
+          erro_tecnico:    options.erro_tecnico ? maskPhone(String(options.erro_tecnico)) : null,
+          contexto:        options.contexto ? sanitize(options.contexto) : null,
+          versao_extensao: getVersion(),
+          navegador:       getBrowserName(),
+          url:             'https://web.whatsapp.com/',
+        };
+        sendOrQueue(entry);
+      } catch (e) {}
+    },
+
+    warn: function (acao, mensagem, opts) {
+      try {
+        var options = opts || {};
+        console.warn('[Connect CRM][' + acao + ']', mensagem);
+        var entry = {
+          nivel:           'WARN',
+          modulo:          options.modulo || 'content.js',
+          acao:            maskPhone(String(acao)),
+          mensagem:        maskPhone(String(mensagem)),
+          erro_tecnico:    options.erro_tecnico ? maskPhone(String(options.erro_tecnico)) : null,
+          contexto:        options.contexto ? sanitize(options.contexto) : null,
+          versao_extensao: getVersion(),
+          navegador:       getBrowserName(),
+          url:             'https://web.whatsapp.com/',
+        };
+        sendOrQueue(entry);
+      } catch (e) {}
+    },
+
+    // INFO e DEBUG ficam estritamente locais no console (não gastam banco nem rede)
+    info: function (acao, mensagem, opts) {
+      try {
+        console.log('[Connect CRM][' + acao + ']', mensagem, opts ? opts : '');
+      } catch (e) {}
+    },
 
     debug: function (acao, mensagem, opts) {
       try {
-        getDebugMode(function (active) {
-          if (active) log('INFO', acao, '[DEBUG] ' + mensagem, opts);
-        });
-      } catch (e) { /* nunca quebra */ }
+        console.debug('[Connect CRM:DEBUG][' + acao + ']', mensagem, opts ? opts : '');
+      } catch (e) {}
     },
 
     /**
-     * Chame no boot da extensão para:
-     *  1) Drenar a fila de logs pendentes
-     *  2) Sincronizar debug_mode do Supabase → chrome.storage.local
+     * Drena a fila local de erros pendentes quando a extensão inicializa e há sessão ativa.
      */
     init: function () {
       try {
-        // 1) Drena fila
         getSession(function (session) {
           if (!session || !session.access_token) return;
 
@@ -177,7 +188,6 @@
             if (queue.length === 0) return;
 
             var remaining = [];
-            var sent = 0;
             function next(i) {
               if (i >= queue.length) {
                 chrome.storage.local.set({ [QUEUE_KEY]: remaining });
@@ -194,23 +204,9 @@
             }
             next(0);
           });
-
-          // 2) Sincroniza debug_mode do Supabase
-          fetch(SUPABASE_URL + '/rest/v1/profiles?select=debug_mode&limit=1', {
-            headers: {
-              'apikey':        SUPABASE_ANON_KEY,
-              'Authorization': 'Bearer ' + session.access_token,
-            },
-          }).then(function (res) {
-            return res.ok ? res.json() : null;
-          }).then(function (data) {
-            if (Array.isArray(data) && data.length > 0) {
-              chrome.storage.local.set({ [DEBUG_KEY]: data[0].debug_mode === true });
-            }
-          }).catch(function () { /* ignora — debug_mode permanece como estava */ });
         });
       } catch (e) {
-        // Nunca quebra a extensão
+        // Silencioso
       }
     },
   };
@@ -219,9 +215,8 @@
   if (typeof global !== 'undefined') {
     global.crmLogger = crmLogger;
   }
-  // Fallback para window (content script) e self (service worker)
   try { self.crmLogger = crmLogger; } catch (e) {}
 
-  console.log('[Connect CRM] logger.js carregado. crmLogger disponível:', typeof crmLogger === 'object');
+  console.log('[Connect CRM] logger.js carregado (modo enxuto).');
 
 }(typeof globalThis !== 'undefined' ? globalThis : typeof self !== 'undefined' ? self : this));

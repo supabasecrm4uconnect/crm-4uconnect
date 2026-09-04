@@ -19,7 +19,7 @@
   // pelo domínio real do CRM na Vercel. Ex.: 'https://crm.4uconnect.com.br'
   // (sem barra no final). Em desenvolvimento, mantenha 'http://localhost:5173'.
   // Este é o ÚNICO lugar do código que precisa mudar para apontar à produção.
-  const CRM_URL = 'https://crm-4uconnect.vercel.app';
+  const CRM_URL = 'https://connect-crm.vercel.app';
 
   const STORAGE_KEY = 'crm_4u_session';
 
@@ -125,6 +125,9 @@
         return res.json().catch(function () { return {}; }).then(function (body) {
           var err = new Error((body && (body.message || body.error)) || ('HTTP ' + res.status));
           err.status = res.status;
+          err.code = body && body.code;
+          err.details = body && body.details;
+          err.hint = body && body.hint;
           throw err;
         });
       }
@@ -136,9 +139,33 @@
     // A sessão vem exclusivamente do CRM (via session-bridge). A extensão não renova
     // tokens por conta própria — quando o token expirar, o usuário deve fazer login no CRM.
     return doFetch(method, path, body, token).catch(function (err) {
+      err.method = method;
+      err.endpoint = String(path || '').split('?')[0];
       if (err.isUnauthorized) handleUnauthorized();
       throw err;
     });
+  }
+
+  function userFacingApiError(err, fallback) {
+    var message = String(err && err.message || '').toLowerCase();
+    var code = String(err && err.code || '');
+
+    if (message.indexOf('limite de leads') !== -1) {
+      return 'Limite de leads do plano atingido. Fale com o administrador da conta.';
+    }
+    if (message.indexOf('pertencer a uma organização') !== -1 || message.indexOf('organização vinculada') !== -1 || message.indexOf('organization') !== -1) {
+      return 'Não foi possível identificar a empresa desta conta. Abra o CRM, entre novamente e tente salvar.';
+    }
+    if ((err && err.status === 409) || code === '23505') {
+      return 'Este contato já está cadastrado no CRM. Atualize o painel para carregá-lo.';
+    }
+    if ((err && err.status === 403) || code === '42501') {
+      return 'Sua conta não tem permissão para salvar este lead. Confirme se o acesso e o plano estão ativos.';
+    }
+    if (!err || (!err.status && (err.name === 'TypeError' || message.indexOf('fetch') !== -1 || message.indexOf('network') !== -1))) {
+      return 'Não foi possível conectar ao CRM. Verifique a internet e tente novamente.';
+    }
+    return fallback || 'Não foi possível concluir a operação. Tente novamente.';
   }
 
 
@@ -157,10 +184,6 @@
   function updateLead(id, body, token) {
     return apiRequest('PATCH', '/rest/v1/leads?id=eq.' + id, body, token)
       .then(function (data) { return Array.isArray(data) ? data[0] : data; });
-  }
-
-  function insertStatusHistory(body, token) {
-    return apiRequest('POST', '/rest/v1/lead_status_history', body, token);
   }
 
   function createActivity(body, token) {
@@ -182,9 +205,15 @@
       .then(function (d) { return Array.isArray(d) ? d : []; });
   }
 
-  function getOrg(token) {
-    // A RLS "Ver própria org" retorna apenas a organização do usuário logado
-    return apiRequest('GET', '/rest/v1/organizations?select=nome,nome_exibicao&limit=1', null, token)
+  function getCurrentProfile(userId, token) {
+    return apiRequest('GET', '/rest/v1/profiles?id=eq.' + encodeURIComponent(userId) + '&select=id,organization_id&limit=1', null, token)
+      .then(function (d) { return Array.isArray(d) && d.length ? d[0] : null; });
+  }
+
+  function getOrg(organizationId, token) {
+    // Filtra explicitamente pelo tenant do próprio perfil. Super admins podem
+    // enxergar outras organizações na área administrativa, mas não nesta UI.
+    return apiRequest('GET', '/rest/v1/organizations?id=eq.' + encodeURIComponent(organizationId) + '&select=id,nome,nome_exibicao&limit=1', null, token)
       .then(function (d) { return Array.isArray(d) && d.length ? d[0] : null; });
   }
 
@@ -2103,6 +2132,13 @@
     var observacao = state.form.observacao;
     var token = state.auth.access_token;
 
+    if (!state.auth.organization_id) {
+      state.ui.saving = false;
+      state.ui.error = 'Não foi possível identificar a empresa desta conta. Abra o CRM, entre novamente e tente salvar.';
+      render();
+      return;
+    }
+
     getLeadByPhone(phone, token).then(function (existing) {
       if (existing) {
         state.current.lead = existing;
@@ -2125,6 +2161,7 @@
         valor: parseValorBR(state.form.valor),
         foto_url: state.current.photo || null,
         tags: state.form.tags || [],
+        organization_id: state.auth.organization_id,
       }, token).then(function (newLead) {
         if (!newLead || newLead.code) {
           state.ui.saving = false;
@@ -2133,45 +2170,40 @@
           return;
         }
 
-        return insertStatusHistory({
-          lead_id: newLead.id,
-          status_anterior: null,
-          status_novo: status,
-          alterado_por: state.auth.user_id || null,
-        }, token).then(function () {
-          state.current.lead = newLead;
-          state.ui.view = 'existing-lead';
-          state.ui.saving = false;
-          state.ui.success = 'Lead salvo com sucesso!';
-          if (typeof crmLogger !== 'undefined') crmLogger.info('lead_criado', 'Novo lead criado com sucesso no CRM', {
-            modulo: 'content.js',
-            contexto: { lead_id: newLead.id, status: newLead.status }
-          });
-          render();
-
-          // Atualiza o cache local (todas as variantes do número) e injeta o badge na lista
-          if (newLead.whatsapp) {
-            var entry = { id: newLead.id, nome: newLead.nome, whatsapp: newLead.whatsapp, status: newLead.status };
-            phoneVariants(newLead.whatsapp).forEach(function (v) { leadsCache[v] = entry; });
-          }
-          injectListBadges();
-
-          // Automate saving the contact natively in WhatsApp Web
-          var leadNome = newLead.nome || state.form.nome || state.current.name || 'Contato';
-          automateWhatsAppSaveContact(leadNome);
-
-          setTimeout(function () { state.ui.success = ''; render(); }, 3000);
+        // O histórico inicial é criado pelo trigger de banco da migration 26.
+        // Não faça um segundo POST: a escrita manual é bloqueada por RLS.
+        state.current.lead = newLead;
+        state.ui.view = 'existing-lead';
+        state.ui.saving = false;
+        state.ui.success = 'Lead salvo com sucesso!';
+        if (typeof crmLogger !== 'undefined') crmLogger.info('lead_criado', 'Novo lead criado com sucesso no CRM', {
+          modulo: 'content.js',
+          contexto: { lead_id: newLead.id, status: newLead.status }
         });
+        render();
+
+        // Atualiza o cache local (todas as variantes do número) e injeta o badge na lista
+        if (newLead.whatsapp) {
+          var entry = { id: newLead.id, nome: newLead.nome, whatsapp: newLead.whatsapp, status: newLead.status };
+          phoneVariants(newLead.whatsapp).forEach(function (v) { leadsCache[v] = entry; });
+        }
+        injectListBadges();
+
+        // Automate saving the contact natively in WhatsApp Web
+        var leadNome = newLead.nome || state.form.nome || state.current.name || 'Contato';
+        automateWhatsAppSaveContact(leadNome);
+
+        setTimeout(function () { state.ui.success = ''; render(); }, 3000);
       });
     }).catch(function (err) {
       console.error('[Connect CRM] Erro ao salvar lead:', err);
       if (typeof crmLogger !== 'undefined') crmLogger.error('salvar_lead', 'Botão salvar falhou — lead não foi criado', {
         modulo: 'content.js',
         erro_tecnico: err && (err.message || String(err)),
-        contexto: { phone: state.current.phone, status: err && err.status }
+        contexto: { phone: state.current.phone, status: err && err.status, code: err && err.code, endpoint: err && err.endpoint }
       });
       state.ui.saving = false;
-      if (err && err.isUnauthorized) { handleUnauthorized(); } else { state.ui.error = 'Erro de conexão.'; render(); }
+      if (err && err.isUnauthorized) { handleUnauthorized(); } else { state.ui.error = userFacingApiError(err, 'Não foi possível salvar o lead. Tente novamente.'); render(); }
     });
   }
 
@@ -2205,11 +2237,7 @@
       tags: state.form.tags || [],
       foto_url: state.current.photo || state.current.lead.foto_url || null,
     }, token).then(function (updated) {
-      var afterHistory = statusChanged
-        ? insertStatusHistory({ lead_id: leadId, status_anterior: prevStatus, status_novo: status, alterado_por: state.auth.user_id || null }, token)
-        : Promise.resolve();
-
-      return afterHistory.then(function () {
+      // Alterações de status são auditadas pelo trigger de banco da migration 26.
         state.current.lead = Object.assign({}, state.current.lead, updated);
         state.ui.saving = false;
         state.ui.success = 'Alterações salvas!';
@@ -2232,16 +2260,15 @@
         }
 
         setTimeout(function () { state.ui.success = ''; render(); }, 3000);
-      });
     }).catch(function (err) {
       console.error('[Connect CRM] Erro ao atualizar lead:', err);
       if (typeof crmLogger !== 'undefined') crmLogger.error('atualizar_lead', 'Falha ao atualizar lead existente', {
         modulo: 'content.js',
         erro_tecnico: err && (err.message || String(err)),
-        contexto: { lead_id: state.current.lead && state.current.lead.id, status: err && err.status }
+        contexto: { lead_id: state.current.lead && state.current.lead.id, status: err && err.status, code: err && err.code, endpoint: err && err.endpoint }
       });
       state.ui.saving = false;
-      if (err && err.isUnauthorized) { handleUnauthorized(); } else { state.ui.error = 'Erro de conexão.'; render(); }
+      if (err && err.isUnauthorized) { handleUnauthorized(); } else { state.ui.error = userFacingApiError(err, 'Não foi possível atualizar o lead. Tente novamente.'); render(); }
     });
   }
 
@@ -2273,6 +2300,7 @@
       hora_agendada: hora,
       status_atividade: 'pendente',
       criado_por: state.auth.user_id || null,
+      organization_id: state.auth.organization_id || state.current.lead.organization_id,
     }, token).then(function () {
       // Usa meio-dia UTC para evitar troca de dia por diferença de fuso horário
       var proximo = data + 'T12:00:00.000Z';
@@ -2291,7 +2319,7 @@
     }).catch(function (err) {
       console.error('[Connect CRM] Erro ao criar follow-up:', err);
       state.ui.saving = false;
-      if (err && err.isUnauthorized) { handleUnauthorized(); } else { state.ui.error = 'Erro de conexão.'; render(); }
+      if (err && err.isUnauthorized) { handleUnauthorized(); } else { state.ui.error = userFacingApiError(err, 'Não foi possível agendar o follow-up. Tente novamente.'); render(); }
     });
   }
 
@@ -2306,23 +2334,27 @@
 
   function loadMeta() {
     if (!state.auth) return Promise.resolve();
-    return Promise.all([
-      getSources(state.auth.access_token),
-      getSegments(state.auth.access_token),
-      getStatuses(state.auth.access_token),
-      loadLeadsCache(state.auth.access_token),
-      getOrg(state.auth.access_token),
-    ]).then(function (results) {
-      state.sources = Array.isArray(results[0]) ? results[0] : [];
-      state.segments = Array.isArray(results[1]) ? results[1] : [];
-      state.statuses = Array.isArray(results[2]) ? results[2] : [];
-      var org = results[4];
-      if (org) state.orgName = (org.nome_exibicao && org.nome_exibicao.trim()) || org.nome || '';
-      applyBranding();
-      console.log('[Connect CRM] Meta carregada: ' + state.sources.length + ' origens, ' + state.segments.length + ' segmentos, ' + state.statuses.length + ' statuses.');
-      if (typeof crmLogger !== 'undefined') crmLogger.info('meta_carregada', 'Metadados carregados com sucesso', {
-        modulo: 'content.js',
-        contexto: { origens: state.sources.length, segmentos: state.segments.length, statuses: state.statuses.length }
+    var token = state.auth.access_token;
+    return getCurrentProfile(state.auth.user_id, token).then(function (profile) {
+      state.auth.organization_id = profile && profile.organization_id || null;
+      return Promise.all([
+        getSources(token),
+        getSegments(token),
+        getStatuses(token),
+        loadLeadsCache(token),
+        state.auth.organization_id ? getOrg(state.auth.organization_id, token) : Promise.resolve(null),
+      ]).then(function (results) {
+        state.sources = Array.isArray(results[0]) ? results[0] : [];
+        state.segments = Array.isArray(results[1]) ? results[1] : [];
+        state.statuses = Array.isArray(results[2]) ? results[2] : [];
+        var org = results[4];
+        if (org) state.orgName = (org.nome_exibicao && org.nome_exibicao.trim()) || org.nome || '';
+        applyBranding();
+        console.log('[Connect CRM] Meta carregada: ' + state.sources.length + ' origens, ' + state.segments.length + ' segmentos, ' + state.statuses.length + ' statuses.');
+        if (typeof crmLogger !== 'undefined') crmLogger.info('meta_carregada', 'Metadados carregados com sucesso', {
+          modulo: 'content.js',
+          contexto: { origens: state.sources.length, segmentos: state.segments.length, statuses: state.statuses.length }
+        });
       });
     }).catch(function (err) {
       if (err && err.isUnauthorized) {
@@ -2535,13 +2567,16 @@
         getSources(state.auth.access_token),
         getSegments(state.auth.access_token),
         getStatuses(state.auth.access_token),
-        getOrg(state.auth.access_token),
+        state.auth.organization_id ? getOrg(state.auth.organization_id, state.auth.access_token) : Promise.resolve(null),
       ]).then(function (results) {
         state.sources = Array.isArray(results[0]) ? results[0] : state.sources;
         state.segments = Array.isArray(results[1]) ? results[1] : state.segments;
         state.statuses = Array.isArray(results[2]) ? results[2] : state.statuses;
         var org = results[3];
-        if (org) { state.orgName = (org.nome_exibicao && org.nome_exibicao.trim()) || org.nome || ''; applyBranding(); }
+        if (org) {
+          state.orgName = (org.nome_exibicao && org.nome_exibicao.trim()) || org.nome || '';
+          applyBranding();
+        }
       }).catch(function () { });
     }, 30000);
   }
@@ -2604,6 +2639,7 @@
         // e derrubaria o usuário pro login mesmo com o CRM aberto e válido).
         console.log('[Connect CRM] Token atualizado pelo CRM.');
         if (typeof crmLogger !== 'undefined') crmLogger.info('token_atualizado', 'Token de acesso renovado pelo CRM web — sessão continuada', { modulo: 'content.js' });
+        newSession.organization_id = state.auth.organization_id || null;
         state.auth = newSession;
       } else if (!newSession && state.auth) {
         // Usuário fez logout no CRM — espelha aqui
@@ -2634,7 +2670,7 @@
     });
   }
 
-  // Inicializa o logger (drena fila offline + sincroniza debug_mode)
+  // Inicializa o logger (drena fila offline de erros)
   if (typeof crmLogger !== 'undefined') crmLogger.init();
 
   // Inicia assim que o body estiver disponível
