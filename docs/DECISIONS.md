@@ -197,15 +197,16 @@ arquivo PNG. Isso fazia o navegador e a extensão exibirem identidades diferente
 
 ### Decisão
 
-Usar `crm-web/public/favicon.png` como fonte visual única. O CRM Web referencia
-diretamente `/favicon.png`. Para atender ao tamanho usado na instalação e na
-Chrome Web Store, a extensão recebe a mesma arte centralizada em um PNG de
-128×128 pixels, com apenas um pixel transparente acrescentado ao redor da imagem
-original de 126×126 pixels.
+Usar `crm-web/public/favicon.svg` como fonte visual: um círculo esmeralda
+`#10B981` centralizado em uma tela transparente de 128×128 pixels. O CRM Web
+referencia o SVG diretamente. Como o manifesto da extensão não aceita SVG, site
+e extensão também recebem uma versão PNG de 128×128 visualmente idêntica.
 
 ### Consequências
 
 - Site, página de extensões e Chrome Web Store passam a usar a mesma identidade.
-- O desenho original não é recortado nem recriado.
-- Toda troca futura do favicon deve atualizar o PNG público do site, o PNG da
-  extensão e o pacote ZIP enviado à loja.
+- O favicon permanece nítido no navegador por usar a fonte vetorial.
+- O PNG usado pela extensão mantém 16 pixels transparentes ao redor do círculo,
+  preservando legibilidade em tamanhos reduzidos.
+- Toda troca futura do favicon deve atualizar o SVG, os PNGs equivalentes e o
+  pacote ZIP enviado à loja.

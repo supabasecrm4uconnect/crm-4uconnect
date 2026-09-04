@@ -43,5 +43,5 @@ O ZIP da versão 1.0.2 é `crm-extension/dist/connect-crm-1.0.2.zip`. Ele conté
 somente `manifest.json`, scripts, CSS e imagens necessários à extensão.
 
 Antes de gerar o ZIP, confirmar que `crm-extension/favicon.png` representa a
-mesma arte de `crm-web/public/favicon.png` e possui 128×128 pixels, tamanho usado
-na instalação e na Chrome Web Store.
+mesma arte circular esmeralda de `crm-web/public/favicon.svg` e possui 128×128
+pixels, tamanho usado na instalação e na Chrome Web Store.

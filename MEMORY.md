@@ -100,10 +100,10 @@
 
 ## Favicon compartilhado
 
-- O CRM Web referencia `/favicon.png` no ícone comum e no `apple-touch-icon`.
-- A arte fornecida em `crm-web/public/favicon.png` tem 126×126 pixels.
-- A extensão usa a mesma arte em `crm-extension/favicon.png`, centralizada em uma
-  tela transparente de 128×128 pixels para atender ao pacote da Chrome Web Store.
+- O CRM Web referencia `/favicon.svg`: um círculo `#10B981` sobre fundo
+  transparente. O `apple-touch-icon` usa o PNG equivalente.
+- `crm-web/public/favicon.png` e `crm-extension/favicon.png` são versões 128×128
+  idênticas do círculo, com margem transparente de 16 pixels.
 - O build de produção do CRM Web concluiu com sucesso após a troca.
 
 ## Próximo passo
