@@ -21,6 +21,7 @@
 
   const STORAGE_KEY = 'crm_4u_session';
   const OBSERVATION_MAX_LENGTH = 500;
+  const VALUE_MAX_INTEGER_DIGITS = 6;
 
   /* ===== STATUS CONFIG (dinâmico — carregado do DB) ===== */
 
@@ -2196,7 +2197,7 @@
         customSelectField('Status', ICON.flag, 'crm-status', form.status, statusSelectItems()),
         customSelectField('Origem', ICON.globe, 'crm-origem', form.origem_id, sourceSelectItems(sources)),
         customSelectField('Segmento', ICON.tag, 'crm-segmento', form.segmento_id, segmentSelectItems(segments)),
-        fieldIcon('Valor (R$)', ICON.dollar, '<input class="crm-input crm-has-icon" type="text" inputmode="decimal" id="crm-valor" value="' + escapeHtml(form.valor != null ? String(form.valor) : '') + '" placeholder="Ex: 1.500,00" />'),
+        fieldIcon('Valor (R$)', ICON.dollar, '<input class="crm-input crm-has-icon" type="text" inputmode="decimal" id="crm-valor" value="' + escapeHtml(form.valor != null ? String(form.valor) : '') + '" placeholder="Ex: 1.500,00" aria-label="Valor em reais, máximo de 6 dígitos inteiros" title="Valor máximo: R$ 999.999,99" />'),
         tagsFieldHtml(form.tags),
         observationFieldHtml(form.observacao),
         '<button id="crm-save-submit" class="crm-btn crm-btn-primary" type="button"' + (saving ? ' disabled' : '') + '>',
@@ -2255,7 +2256,7 @@
         customSelectField('Status', ICON.flag, 'crm-status', form.status, statusSelectItems()),
         customSelectField('Origem', ICON.globe, 'crm-origem', form.origem_id, sourceSelectItems(sources)),
         customSelectField('Segmento', ICON.tag, 'crm-segmento', form.segmento_id, segmentSelectItems(segments)),
-        fieldIcon('Valor (R$)', ICON.dollar, '<input class="crm-input crm-has-icon" type="text" inputmode="decimal" id="crm-valor" value="' + escapeHtml(form.valor != null ? String(form.valor) : '') + '" placeholder="Ex: 1.500,00" />'),
+        fieldIcon('Valor (R$)', ICON.dollar, '<input class="crm-input crm-has-icon" type="text" inputmode="decimal" id="crm-valor" value="' + escapeHtml(form.valor != null ? String(form.valor) : '') + '" placeholder="Ex: 1.500,00" aria-label="Valor em reais, máximo de 6 dígitos inteiros" title="Valor máximo: R$ 999.999,99" />'),
         tagsFieldHtml(form.tags),
         observationFieldHtml(form.observacao),
         '<button id="crm-update-submit" class="crm-btn crm-btn-primary" type="button"' + (saving ? ' disabled' : '') + (updateDirty ? '' : ' hidden') + '>',
@@ -2458,7 +2459,7 @@
 
     var commaIndex = raw.lastIndexOf(',');
     if (commaIndex !== -1) {
-      var integerWithComma = raw.slice(0, commaIndex).replace(/\D/g, '') || '0';
+      var integerWithComma = raw.slice(0, commaIndex).replace(/\D/g, '').slice(0, VALUE_MAX_INTEGER_DIGITS) || '0';
       var decimalWithComma = raw.slice(commaIndex + 1).replace(/\D/g, '').slice(0, 2);
       return integerWithComma + ',' + decimalWithComma;
     }
@@ -2468,12 +2469,12 @@
       var dotIndex = raw.indexOf('.');
       var digitsAfterDot = raw.slice(dotIndex + 1).replace(/\D/g, '');
       if (digitsAfterDot.length <= 2) {
-        var integerWithDot = raw.slice(0, dotIndex).replace(/\D/g, '') || '0';
+        var integerWithDot = raw.slice(0, dotIndex).replace(/\D/g, '').slice(0, VALUE_MAX_INTEGER_DIGITS) || '0';
         return integerWithDot + ',' + digitsAfterDot;
       }
     }
 
-    return raw.replace(/\D/g, '');
+    return raw.replace(/\D/g, '').slice(0, VALUE_MAX_INTEGER_DIGITS);
   }
 
   // Converte "1.500,00", "2000" e "1500.50" em número (ou null).

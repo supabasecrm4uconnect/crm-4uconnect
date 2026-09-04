@@ -161,8 +161,9 @@ aceitavam entradas sem limites adequados à interface compacta da extensão.
 Comparar o formulário com o lead carregado usando valores normalizados. O botão
 **Salvar alterações** só é exibido quando nome, status, origem, segmento, valor,
 observação ou tags realmente diferem da referência original. Valores monetários
-são higienizados no navegador, aceitando apenas dígitos e separador decimal, e
-continuam sendo convertidos para o mesmo número enviado à coluna `valor`.
+são higienizados no navegador, aceitando apenas dígitos e separador decimal,
+limitando a parte inteira a seis dígitos e continuando a ser convertidos para o
+mesmo número enviado à coluna `valor`.
 
 Limitar novas entradas no campo Observação a 500 caracteres, com contador
 visível. Observações antigas acima do limite não são truncadas apenas por serem
@@ -175,6 +176,8 @@ passam a dividir igualmente toda a largura disponível.
 - Saves redundantes deixam de ser oferecidos ao usuário e o botão reaparece
   imediatamente se houver uma alteração real.
 - Formatos monetários equivalentes não geram falso estado de alteração.
+- O maior valor digitável pela extensão é `999999,99`; a regra vale também para
+  conteúdo colado e não modifica automaticamente valores antigos apenas carregados.
 - A validação é exclusivamente de frontend: não há migration nem mudança de
   tabela, coluna, tipo, RLS ou payload da API.
 - Falha apenas na sincronização do WhatsApp é diferenciada de falha na gravação
