@@ -762,7 +762,6 @@
     if (!root || !toggle) return;
 
     state.visible = !state.visible;
-    state.hiddenByWA = false;
     if (state.visible) {
       root.classList.remove('crm-hidden');
       toggle.classList.remove('crm-toggle-hidden'); // move para right:576px (colado ao painel)
@@ -774,80 +773,6 @@
       toggle.classList.add('crm-toggle-hidden'); // move para right:0 (aba na borda direita)
       toggle.querySelector('path').setAttribute('d', 'M4 2L8 6L4 10');
     }
-  }
-
-  /**
-   * Detecta painéis nativos do WhatsApp Web e auto-oculta a sidebar do CRM.
-   *
-   * Usa setInterval (não MutationObserver) porque o WhatsApp faz centenas de
-   * mutações React por segundo, o que fazia o debounce do observer nunca disparar.
-   *
-   * Seletores confirmados via diagnóstico real:
-   *   save-contact-drawer → painel de Adicionar/Salvar Contato (não existe no DOM normal)
-   */
-  function watchWhatsAppModals() {
-    // Seletores que APENAS existem quando um painel nativo está aberto
-    var WA_SELECTORS = [
-      '[data-testid="drawer-right"]',          // Container genérico do painel direito (cobre qualquer aba direita)
-      '[data-testid="save-contact-drawer"]',   // Adicionar/Salvar Contato
-      '[data-testid="chat-info-drawer"]',      // Dados do contato (DOM atual do WhatsApp)
-      '[data-testid="contact-info-1"]',         // Info do Contato
-      '[data-testid="group-info"]',             // Info do Grupo
-      '[data-testid="profile-view"]',           // Perfil
-      '[data-testid="settings-view"]',          // Configurações
-    ].join(', ');
-
-
-    function isWAPanelOpen() {
-      return Array.prototype.some.call(document.querySelectorAll(WA_SELECTORS), waVisivel);
-    }
-
-    function hideSidebarForWA() {
-      var root = document.getElementById('crm-4u-root');
-      var toggle = document.getElementById('crm-4u-toggle');
-      if (!root || !toggle || !state.visible) return;
-
-      console.log('[Connect CRM] Painel WA detectado — ocultando sidebar.');
-      state.visible = false;
-      state.hiddenByWA = true;
-      root.classList.add('crm-hidden');
-      toggle.classList.add('crm-toggle-hidden');
-      toggle.querySelector('path').setAttribute('d', 'M4 2L8 6L4 10');
-      toggle.title = 'CRM oculto — clique para restaurar';
-      toggle.style.borderLeft = '3px solid #10b981';
-    }
-
-    function restoreSidebarAfterWA() {
-      var root = document.getElementById('crm-4u-root');
-      var toggle = document.getElementById('crm-4u-toggle');
-      if (!root || !toggle || !state.hiddenByWA) return;
-
-      console.log('[Connect CRM] Painel WA fechado — restaurando sidebar.');
-      state.visible = true;
-      state.hiddenByWA = false;
-      root.classList.remove('crm-hidden');
-      toggle.classList.remove('crm-toggle-hidden');
-      toggle.querySelector('path').setAttribute('d', 'M8 2L4 6L8 10');
-      toggle.title = 'Abrir/fechar CRM';
-      toggle.style.borderLeft = '';
-    }
-
-    var panelWasOpen = false;
-
-    setInterval(function () {
-      var open = isWAPanelOpen();
-
-      if (open) {
-        panelWasOpen = true;
-        hideSidebarForWA();
-      } else if (!open && panelWasOpen) {
-        panelWasOpen = false;
-        // Aguarda animação de fechar do WA antes de restaurar
-        setTimeout(function () {
-          if (!isWAPanelOpen()) restoreSidebarAfterWA();
-        }, 400);
-      }
-    }, 300);
   }
 
   function setReactInputValue(input, value) {
@@ -2631,9 +2556,6 @@
   function startExtension() {
     // Injeta o sidebar imediatamente
     injectSidebar();
-
-    // Detecta painéis nativos do WhatsApp e cede espaço automaticamente
-    watchWhatsAppModals();
 
     // Escuta atualizações de sessão vindas do session-bridge.js (CRM Web)
     chrome.storage.onChanged.addListener(function (changes, area) {

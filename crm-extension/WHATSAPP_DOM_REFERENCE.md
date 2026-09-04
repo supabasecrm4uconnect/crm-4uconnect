@@ -100,7 +100,12 @@ O seletor textual `Adicionar` deve ficar restrito ao painel de dados. O lápis
 dentro de `notes-section` deve sempre ser excluído da busca pelo botão de
 edição do contato.
 
-### Painéis que disparam auto-ocultação do sidebar CRM
+### Painéis nativos cobertos pela sidebar CRM
+
+Por decisão de UX, a sidebar não se recolhe automaticamente quando estes
+drawers aparecem. Ela permanece acima deles para ocultar a automação de
+cadastro. O usuário ainda pode recolhê-la manualmente pelo botão lateral.
+
 ```
 [data-testid="drawer-right"]         ← qualquer painel direito
 [data-testid="save-contact-drawer"]  ← Adicionar/Salvar Contato
