@@ -83,10 +83,28 @@ div[data-testid="drawer-right"]                  ← container genérico do pain
 | Voltar (←) | `button[aria-label="Voltar"][data-tab="2"]` |
 | Salvar contato | `[data-testid="save-contact-btn"]` ou `button[aria-label="Salvar contato"]` |
 
+### Contato ainda não salvo — DOM atual
+
+O WhatsApp passou a abrir primeiro o painel de dados do contato e exibir um
+botão com texto curto, sem `aria-label`:
+
+```text
+[data-testid="chat-info-drawer"]
+  └── button com textContent exato "Adicionar"
+       └── svg > title com textContent "ic-person-add"
+  └── [data-testid="notes-section"]
+       └── button[aria-label^="Editar"]  ← edita notas; não edita o contato
+```
+
+O seletor textual `Adicionar` deve ficar restrito ao painel de dados. O lápis
+dentro de `notes-section` deve sempre ser excluído da busca pelo botão de
+edição do contato.
+
 ### Painéis que disparam auto-ocultação do sidebar CRM
 ```
 [data-testid="drawer-right"]         ← qualquer painel direito
 [data-testid="save-contact-drawer"]  ← Adicionar/Salvar Contato
+[data-testid="chat-info-drawer"]     ← Dados do Contato (DOM atual)
 [data-testid="contact-info-1"]       ← Info do Contato
 [data-testid="group-info"]           ← Info do Grupo
 [data-testid="profile-view"]         ← Perfil
@@ -266,7 +284,7 @@ Aguardar `save-contact-drawer` antes de clicar em "Editar" causa timeout.
 
 | Situação | Menu mostra | Fluxo a usar |
 |---|---|---|
-| Contato **não** salvo na agenda | `button[aria-label="Add to contacts"]` | `automateWhatsAppSaveContact()` (ADD flow) |
+| Contato **não** salvo na agenda | `button[aria-label="Add to contacts"]` ou botão `Adicionar` dentro de `chat-info-drawer` | `automateWhatsAppSaveContact()` (ADD flow) |
 | Contato **já** salvo na agenda | `button[aria-label="Dados do contato"]` | `automateWhatsAppEditContact()` (EDIT flow) |
 
 A função `syncContactNameToWA()` abre o menu e detecta qual das duas opções está presente, roteando automaticamente.
@@ -297,6 +315,7 @@ A função `syncContactNameToWA()` abre o menu e detecta qual das duas opções 
 
 | Data | Descoberta | Como foi identificada |
 |---|---|---|
+| 2026-09-04 | Contato não salvo agora usa `chat-info-drawer` e botão sem `aria-label`, com texto `Adicionar`; o lápis `Editar` em `notes-section` edita somente notas | Reprodução em campo: o lead era salvo no CRM, mas a automação clicava no lápis de notas e expirava aguardando `save-contact-drawer` |
 | 2026-06-11 | `cell-frame-title` é `<div>`, não `<span>` | Spy de eventos — texto interno "Carina" + ancestral exibido |
 | 2026-06-11 | Badge aparecia ao lado do timestamp pois `titleEl.parentElement` é o gridcell com hora | Relato do usuário + spy |
 | 2026-06-11 | Botões "Fechar" e "Voltar" no drawer têm `data-tab="2"` | Spy de eventos — clique no X e na seta |

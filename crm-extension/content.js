@@ -790,6 +790,7 @@
     var WA_SELECTORS = [
       '[data-testid="drawer-right"]',          // Container genérico do painel direito (cobre qualquer aba direita)
       '[data-testid="save-contact-drawer"]',   // Adicionar/Salvar Contato
+      '[data-testid="chat-info-drawer"]',      // Dados do contato (DOM atual do WhatsApp)
       '[data-testid="contact-info-1"]',         // Info do Contato
       '[data-testid="group-info"]',             // Info do Grupo
       '[data-testid="profile-view"]',           // Perfil
@@ -798,7 +799,7 @@
 
 
     function isWAPanelOpen() {
-      return !!document.querySelector(WA_SELECTORS);
+      return Array.prototype.some.call(document.querySelectorAll(WA_SELECTORS), waVisivel);
     }
 
     function hideSidebarForWA() {
@@ -836,13 +837,15 @@
     setInterval(function () {
       var open = isWAPanelOpen();
 
-      if (open && !panelWasOpen) {
+      if (open) {
         panelWasOpen = true;
         hideSidebarForWA();
       } else if (!open && panelWasOpen) {
         panelWasOpen = false;
         // Aguarda animação de fechar do WA antes de restaurar
-        setTimeout(restoreSidebarAfterWA, 400);
+        setTimeout(function () {
+          if (!isWAPanelOpen()) restoreSidebarAfterWA();
+        }, 400);
       }
     }, 300);
   }
@@ -994,6 +997,19 @@
     return !!((drawer && waVisivel(drawer)) || waVisivel(nome));
   }
 
+  function waPainelInfoContato() {
+    var paineis = document.querySelectorAll('[data-testid="chat-info-drawer"],[data-testid="contact-info-1"]');
+    for (var i = 0; i < paineis.length; i++) {
+      if (waVisivel(paineis[i])) return paineis[i];
+    }
+
+    var drawers = document.querySelectorAll('[data-testid="drawer-right"]');
+    for (var j = 0; j < drawers.length; j++) {
+      if (waVisivel(drawers[j]) && drawers[j].querySelector('[data-testid="contact-info-header"]')) return drawers[j];
+    }
+    return null;
+  }
+
   function waMaisOpcoes() {
     return document.querySelector('#main header [aria-label="Mais opções"]') ||
       document.querySelector('#main header [aria-label="More options"]') ||
@@ -1008,7 +1024,15 @@
       root.querySelectorAll('[aria-label="Add to contacts"],[aria-label="Adicionar aos contatos"],[aria-label="Adicionar aos contactos"]'),
       waVisivel
     );
-    return direto || waBuscarPorTexto(['Add to contacts', 'Adicionar aos contatos', 'Adicionar aos contactos', 'Novo contato', 'New contact'], root);
+    if (direto) return direto;
+
+    var legado = waBuscarPorTexto(['Add to contacts', 'Adicionar aos contatos', 'Adicionar aos contactos', 'Novo contato', 'New contact'], root);
+    if (legado) return legado;
+
+    // O DOM atual usa somente "Adicionar"/"Add" no painel de dados.
+    // Limitar o texto curto a esse painel evita clicar em outras ações.
+    var painel = root === document ? waPainelInfoContato() : root;
+    return painel ? waBuscarPorTexto(['Adicionar', 'Add'], painel) : null;
   }
 
   function waBtnPersonAdd(root) {
@@ -1037,6 +1061,7 @@
       function (el) {
         if (!waVisivel(el)) return false;
         var btn = el.closest('button,[role="button"],div[tabindex]') || el;
+        if (btn.closest('[data-testid="notes-section"]')) return false;
         var cont = btn.closest('section,aside,[role="dialog"],div');
         var tc = waNorm((cont && (cont.innerText || cont.textContent)) || '');
         if (tc.indexOf('adicione notas') !== -1 || tc.indexOf('notas sobre') !== -1) return false;
@@ -1044,7 +1069,17 @@
       }
     );
     if (ic) return ic.closest('button,[role="button"],div[tabindex]') || ic;
-    return waBuscarPorTexto(['Editar', 'Edit'], root);
+    var porTexto = waBuscarPorTexto(['Editar', 'Edit'], root);
+    return porTexto && !porTexto.closest('[data-testid="notes-section"]') ? porTexto : null;
+  }
+
+  function waAcaoCadastroNoPainel() {
+    var painel = waPainelInfoContato();
+    if (!painel) return null;
+    var add = waBtnPersonAdd(painel) || waBtnAdicionar(painel);
+    if (add) return { tipo: 'adicionar', botao: add };
+    var edit = waBtnEditar(painel);
+    return edit ? { tipo: 'editar', botao: edit } : null;
   }
 
   // Reaproveita o simulateClick (pointer+mouse). Aqui só um wrapper seguro.
@@ -1079,9 +1114,22 @@
       }
     }
 
-    // Fallback: abrir pelo menu "Mais opções" → Adicionar OU Dados do contato → Editar
+    // Fallback: abrir pelo menu "Mais opções" → Adicionar OU
+    // Dados do contato → Adicionar/Editar, conforme o estado do número.
     return p.catch(function () {
+      var acaoVisivel = waAcaoCadastroNoPainel();
+      if (acaoVisivel) {
+        waClick(acaoVisivel.botao);
+        return waAguardarCondicao(waCadastroAberto, { timeout: 6000, descricao: 'cadastro de contato' }).then(function () { return true; });
+      }
+
       return waAbrirMenuMaisOpcoes().then(function () {
+        var acaoPainel = waAcaoCadastroNoPainel();
+        if (acaoPainel) {
+          waClick(acaoPainel.botao);
+          return waAguardarCondicao(waCadastroAberto, { timeout: 6000, descricao: 'cadastro de contato' }).then(function () { return true; });
+        }
+
         var addMenu = waBtnAdicionar();
         if (addMenu) {
           waClick(addMenu);
@@ -1090,8 +1138,8 @@
         var dados = waBtnDadosContato();
         if (dados) {
           waClick(dados);
-          return waAguardarCondicao(waBtnEditar, { timeout: 6000, descricao: 'botão Editar' }).then(function (eb) {
-            waClick(eb);
+          return waAguardarCondicao(waAcaoCadastroNoPainel, { timeout: 6000, descricao: 'ação de adicionar/editar contato' }).then(function (acao) {
+            waClick(acao.botao);
             return waAguardarCondicao(waCadastroAberto, { timeout: 6000, descricao: 'cadastro de contato' }).then(function () { return true; });
           });
         }
