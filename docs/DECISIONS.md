@@ -88,18 +88,23 @@ mesmo quando o campo fechado recebia CSS semelhante.
 
 ### Decisão
 
-Usar na extensão controles próprios de listbox e calendário que reproduzem os
-tokens dos componentes `CustomSelect`, `CustomDatePicker` e `CustomCalendar` do
-CRM Web. Os valores continuam espelhados em controles nativos ocultos com os IDs
-anteriores, preservando a integração com o estado e as rotinas de salvamento já
-existentes. As abas seguem o padrão sublinhado usado no drawer de leads do CRM.
+Usar na extensão controles próprios de listbox, calendário e horário que
+reproduzem os tokens dos componentes `CustomSelect`, `CustomDatePicker`,
+`CustomCalendar` e `CustomTimePicker` do CRM Web. Os valores continuam espelhados
+em controles nativos ocultos com os IDs anteriores, preservando a integração com
+o estado e as rotinas de salvamento já existentes. As abas seguem o padrão
+sublinhado usado no drawer de leads do CRM.
 
 ### Consequências
 
-- Listboxes, calendário e abas mantêm a mesma linguagem de cor, tipografia,
-  espaçamento, bordas, sombras e estados ativos do CRM Web.
+- Listboxes, calendário, seletor de horário e abas mantêm a mesma linguagem de
+  cor, tipografia, espaçamento, bordas, sombras e estados ativos do CRM Web.
+- As opções dos listboxes exibem os ícones equivalentes aos usados no CRM;
+  opções de status preservam os indicadores de cor.
 - O calendário oferece navegação mensal e ações **Limpar** e **Hoje** sem depender
   do seletor nativo do navegador.
+- O horário oferece colunas de hora/minuto, ação **Agora**, atalhos e confirmação,
+  sem depender do seletor nativo do navegador.
 - Mudanças futuras nesses componentes do CRM Web devem ser refletidas também em
   `crm-extension/content.js` e `crm-extension/sidebar.css`.
 - Como a animação de entrada dos campos usa `transform`, o campo que contém um

@@ -348,19 +348,19 @@
 
   function sourceSelectItems(sources) {
     return [{ value: '', label: 'Selecionar' }].concat((sources || []).map(function (s) {
-      return { value: s.id, label: s.nome };
+      return { value: s.id, label: s.nome, icon: ICON.globe };
     }));
   }
 
   function segmentSelectItems(segments) {
     return [{ value: '', label: 'Selecionar' }].concat((segments || []).map(function (s) {
-      return { value: s.id, label: s.nome };
+      return { value: s.id, label: s.nome, icon: ICON.tag };
     }));
   }
 
   function activityTypeSelectItems() {
     return ACTIVITY_TYPES.map(function (t) {
-      return { value: t.value, label: t.label };
+      return { value: t.value, label: t.label, icon: activityTypeIcon(t.value) };
     });
   }
 
@@ -379,9 +379,26 @@
     list: svgIcon('<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>'),
     calendar: svgIcon('<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'),
     clock: svgIcon('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'),
+    message: svgIcon('<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/>'),
+    users: svgIcon('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>'),
+    checkCircle: svgIcon('<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>'),
+    sparkles: svgIcon('<path d="m12 3-1.9 5.1L5 10l5.1 1.9L12 17l1.9-5.1L19 10l-5.1-1.9Z"/><path d="M5 3v4M3 5h4M19 17v4M17 19h4"/>'),
     mail: svgIcon('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/>'),
     lock: svgIcon('<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
   };
+
+  function activityTypeIcon(value) {
+    var icons = {
+      ligar: ICON.phone,
+      enviar_mensagem: ICON.message,
+      retornar_orcamento: ICON.dollar,
+      cobrar_resposta: ICON.clock,
+      reuniao: ICON.users,
+      enviar_proposta: ICON.mail,
+      pos_venda: ICON.checkCircle,
+    };
+    return icons[value] || ICON.list;
+  }
 
   // Monta um .crm-field com ícone dentro do controle (input/select/textarea).
   // `top=true` alinha o ícone ao topo (para textarea).
@@ -394,6 +411,9 @@
   var CONTROL_CHECK = '<svg class="crm-custom-select-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>';
   var CALENDAR_MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   var CALENDAR_WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  var TIME_PRESETS = ['08:00', '09:00', '10:00', '11:00', '13:30', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'];
+  var TIME_HOURS = Array.from({ length: 24 }, function (_, index) { return String(index).padStart(2, '0'); });
+  var TIME_MINUTES = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
 
   function normalizeControlValue(value) {
     return value === null || value === undefined ? '' : String(value);
@@ -416,8 +436,10 @@
       var itemValue = normalizeControlValue(item.value);
       var isSelected = itemValue === selectedValue;
       var dotColor = item.dotColor || '';
+      var itemIcon = item.icon || '';
       return '<button type="button" class="crm-custom-select-option' + (isSelected ? ' is-selected' : '') + '" role="option" aria-selected="' + (isSelected ? 'true' : 'false') + '" data-select-value="' + escapeHtml(itemValue) + '" data-select-label="' + escapeHtml(item.label) + '" data-dot-color="' + escapeHtml(dotColor) + '">' +
         '<span class="crm-custom-select-option-content">' +
+          itemIcon +
           (dotColor ? '<span class="crm-custom-select-option-dot" style="background:' + escapeHtml(dotColor) + '"></span>' : '') +
           '<span>' + escapeHtml(item.label) + '</span>' +
         '</span>' + CONTROL_CHECK + '</button>';
@@ -425,7 +447,7 @@
 
     return '<div class="crm-field">' +
       '<label class="crm-label" id="' + id + '-label">' + escapeHtml(label) + '</label>' +
-      '<div class="crm-popover-control crm-custom-select" data-popover-height="244">' +
+      '<div class="crm-popover-control crm-custom-select" data-popover-height="244" data-popover-width="320">' +
         '<select id="' + id + '" class="crm-native-control" tabindex="-1" aria-hidden="true">' + nativeOptions + '</select>' +
         '<button type="button" class="crm-custom-select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="' + id + '-label ' + id + '-display">' +
           '<span class="crm-custom-select-trigger-content">' + icon +
@@ -521,7 +543,7 @@
 
     return '<div class="crm-field crm-followup-date-field">' +
       '<label class="crm-label" id="' + id + '-label">' + escapeHtml(label) + '</label>' +
-      '<div class="crm-popover-control crm-date-picker' + (selectedDate ? ' crm-date-picker-has-value' : '') + '" data-selected-date="' + escapeHtml(selectedValue) + '" data-view-year="' + viewDate.getFullYear() + '" data-view-month="' + viewDate.getMonth() + '" data-popover-height="352">' +
+      '<div class="crm-popover-control crm-date-picker' + (selectedDate ? ' crm-date-picker-has-value' : '') + '" data-selected-date="' + escapeHtml(selectedValue) + '" data-view-year="' + viewDate.getFullYear() + '" data-view-month="' + viewDate.getMonth() + '" data-popover-height="352" data-popover-width="288">' +
         '<input type="hidden" id="' + id + '" value="' + escapeHtml(selectedValue) + '">' +
         '<button type="button" class="crm-date-picker-trigger" aria-haspopup="dialog" aria-expanded="false" aria-labelledby="' + id + '-label ' + id + '-display">' +
           '<span class="crm-date-picker-trigger-content">' + ICON.calendar + '<span class="crm-date-picker-display" id="' + id + '-display">' + customDateLabel(selectedValue) + '</span></span>' + CONTROL_CHEVRON +
@@ -531,14 +553,68 @@
     '</div>';
   }
 
+  function parseTimeParts(value) {
+    var match = /^(\d{1,2}):(\d{2})/.exec(normalizeControlValue(value));
+    if (!match) return null;
+    var hourNumber = Number(match[1]);
+    var minuteNumber = Number(match[2]);
+    if (hourNumber < 0 || hourNumber > 23 || minuteNumber < 0 || minuteNumber > 59) return null;
+    return {
+      hour: String(hourNumber).padStart(2, '0'),
+      minute: String(minuteNumber).padStart(2, '0'),
+    };
+  }
+
+  function timePickerMenuHtml(selectedValue, selectedHour, selectedMinute) {
+    var hours = TIME_HOURS.map(function (hour) {
+      return '<button type="button" class="crm-time-option' + (hour === selectedHour ? ' is-selected' : '') + '" data-time-hour="' + hour + '">' + hour + '</button>';
+    }).join('');
+    var minutes = TIME_MINUTES.map(function (minute) {
+      return '<button type="button" class="crm-time-option' + (minute === selectedMinute ? ' is-selected' : '') + '" data-time-minute="' + minute + '">' + minute + '</button>';
+    }).join('');
+    var presets = TIME_PRESETS.map(function (preset) {
+      return '<button type="button" class="crm-time-preset' + (preset === selectedValue ? ' is-selected' : '') + '" data-time-preset="' + preset + '">' + preset + '</button>';
+    }).join('');
+
+    return '<div class="crm-time-header">' +
+        '<div><span class="crm-time-heading">Horário</span><p class="crm-time-current">' + selectedHour + ':' + selectedMinute + '</p></div>' +
+        '<button type="button" class="crm-time-now" data-time-action="now">' + ICON.sparkles + 'Agora</button>' +
+      '</div>' +
+      '<div class="crm-time-columns">' +
+        '<div><p class="crm-time-column-label">Hora</p><div class="crm-time-scroll">' + hours + '</div></div>' +
+        '<div><p class="crm-time-column-label">Minuto</p><div class="crm-time-scroll">' + minutes + '</div></div>' +
+      '</div>' +
+      '<div class="crm-time-presets"><p class="crm-time-section-label">Atalhos rápidos</p><div class="crm-time-preset-grid">' + presets + '</div></div>' +
+      '<div class="crm-time-confirm-wrap"><button type="button" class="crm-time-confirm" data-time-action="confirm">Confirmar</button></div>';
+  }
+
+  function customTimeField(label, id, value) {
+    var selectedValue = normalizeControlValue(value).slice(0, 5);
+    var parts = parseTimeParts(selectedValue) || { hour: '09', minute: '00' };
+    var hasValue = Boolean(parseTimeParts(selectedValue));
+
+    return '<div class="crm-field crm-followup-time-field">' +
+      '<label class="crm-label" id="' + id + '-label">' + escapeHtml(label) + '</label>' +
+      '<div class="crm-popover-control crm-time-picker' + (hasValue ? ' crm-time-picker-has-value' : '') + '" data-selected-time="' + escapeHtml(selectedValue) + '" data-selected-hour="' + parts.hour + '" data-selected-minute="' + parts.minute + '" data-popover-height="310" data-popover-width="272">' +
+        '<input type="hidden" id="' + id + '" value="' + escapeHtml(selectedValue) + '">' +
+        '<button type="button" class="crm-time-picker-trigger" aria-haspopup="dialog" aria-expanded="false" aria-labelledby="' + id + '-label ' + id + '-display">' +
+          '<span class="crm-time-picker-trigger-content">' + ICON.clock +
+            '<span class="crm-time-picker-display' + (hasValue ? ' has-value' : '') + '" id="' + id + '-display">' + (hasValue ? escapeHtml(selectedValue) : 'Selecionar horário') + '</span>' +
+          '</span>' + CONTROL_CHEVRON +
+        '</button>' +
+        '<div class="crm-time-picker-menu" role="dialog" aria-label="Selecionar horário" hidden>' + timePickerMenuHtml(selectedValue, parts.hour, parts.minute) + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
   function closeCustomPopovers(root, except) {
     root.querySelectorAll('.crm-popover-control.is-open').forEach(function (control) {
       if (control === except) return;
-      control.classList.remove('is-open', 'crm-popover-up');
+      control.classList.remove('is-open', 'crm-popover-up', 'crm-popover-align-right');
       var field = control.closest('.crm-field');
       if (field) field.classList.remove('crm-field-popover-open');
-      var menu = control.querySelector('.crm-custom-select-menu, .crm-date-picker-menu');
-      var trigger = control.querySelector('.crm-custom-select-trigger, .crm-date-picker-trigger');
+      var menu = control.querySelector('.crm-custom-select-menu, .crm-date-picker-menu, .crm-time-picker-menu');
+      var trigger = control.querySelector('.crm-custom-select-trigger, .crm-date-picker-trigger, .crm-time-picker-trigger');
       if (menu) menu.hidden = true;
       if (trigger) trigger.setAttribute('aria-expanded', 'false');
     });
@@ -546,8 +622,8 @@
 
   function toggleCustomPopover(root, control) {
     if (!control) return;
-    var menu = control.querySelector('.crm-custom-select-menu, .crm-date-picker-menu');
-    var trigger = control.querySelector('.crm-custom-select-trigger, .crm-date-picker-trigger');
+    var menu = control.querySelector('.crm-custom-select-menu, .crm-date-picker-menu, .crm-time-picker-menu');
+    var trigger = control.querySelector('.crm-custom-select-trigger, .crm-date-picker-trigger, .crm-time-picker-trigger');
     if (!menu || !trigger) return;
     var shouldOpen = menu.hidden;
     closeCustomPopovers(root, shouldOpen ? control : null);
@@ -557,9 +633,11 @@
       var viewport = control.closest('.crm-content') || root;
       var rootRect = viewport.getBoundingClientRect();
       var expectedHeight = Number(control.getAttribute('data-popover-height')) || 244;
+      var expectedWidth = Number(control.getAttribute('data-popover-width')) || controlRect.width;
       var roomBelow = rootRect.bottom - controlRect.bottom;
       var roomAbove = controlRect.top - rootRect.top;
       control.classList.toggle('crm-popover-up', roomBelow < expectedHeight && roomAbove > roomBelow);
+      control.classList.toggle('crm-popover-align-right', controlRect.left + expectedWidth > rootRect.right && controlRect.right - expectedWidth >= rootRect.left);
     }
 
     control.classList.toggle('is-open', shouldOpen);
@@ -590,6 +668,36 @@
       control.setAttribute('data-view-year', String(date.getFullYear()));
       control.setAttribute('data-view-month', String(date.getMonth()));
     }
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function updateCustomTime(control, hour, minute) {
+    var timeValue = hour + ':' + minute;
+    var input = control.querySelector('input[type="hidden"]');
+    var display = control.querySelector('.crm-time-picker-display');
+    var current = control.querySelector('.crm-time-current');
+    if (!input || !display) return;
+
+    control.setAttribute('data-selected-time', timeValue);
+    control.setAttribute('data-selected-hour', hour);
+    control.setAttribute('data-selected-minute', minute);
+    input.value = timeValue;
+    display.textContent = timeValue;
+    display.classList.add('has-value');
+    control.classList.add('crm-time-picker-has-value');
+    if (current) current.textContent = timeValue;
+
+    control.querySelectorAll('[data-time-hour]').forEach(function (option) {
+      option.classList.toggle('is-selected', option.getAttribute('data-time-hour') === hour);
+    });
+    control.querySelectorAll('[data-time-minute]').forEach(function (option) {
+      option.classList.toggle('is-selected', option.getAttribute('data-time-minute') === minute);
+    });
+    control.querySelectorAll('[data-time-preset]').forEach(function (option) {
+      option.classList.toggle('is-selected', option.getAttribute('data-time-preset') === timeValue);
+    });
+
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
   }
@@ -669,6 +777,53 @@
       if (dateTrigger && root.contains(dateTrigger)) {
         event.preventDefault();
         toggleCustomPopover(root, dateTrigger.closest('.crm-date-picker'));
+        return;
+      }
+
+      var timeHour = target.closest('[data-time-hour]');
+      if (timeHour && root.contains(timeHour)) {
+        event.preventDefault();
+        var hourControl = timeHour.closest('.crm-time-picker');
+        updateCustomTime(hourControl, timeHour.getAttribute('data-time-hour'), hourControl.getAttribute('data-selected-minute'));
+        return;
+      }
+
+      var timeMinute = target.closest('[data-time-minute]');
+      if (timeMinute && root.contains(timeMinute)) {
+        event.preventDefault();
+        var minuteControl = timeMinute.closest('.crm-time-picker');
+        updateCustomTime(minuteControl, minuteControl.getAttribute('data-selected-hour'), timeMinute.getAttribute('data-time-minute'));
+        return;
+      }
+
+      var timePreset = target.closest('[data-time-preset]');
+      if (timePreset && root.contains(timePreset)) {
+        event.preventDefault();
+        var presetControl = timePreset.closest('.crm-time-picker');
+        var presetParts = parseTimeParts(timePreset.getAttribute('data-time-preset'));
+        if (presetParts) updateCustomTime(presetControl, presetParts.hour, presetParts.minute);
+        closeCustomPopovers(root);
+        return;
+      }
+
+      var timeAction = target.closest('[data-time-action]');
+      if (timeAction && root.contains(timeAction)) {
+        event.preventDefault();
+        var actionTimeControl = timeAction.closest('.crm-time-picker');
+        if (timeAction.getAttribute('data-time-action') === 'now') {
+          var now = new Date();
+          var nowHour = String(now.getHours()).padStart(2, '0');
+          var nowMinute = String((Math.round(now.getMinutes() / 5) * 5) % 60).padStart(2, '0');
+          updateCustomTime(actionTimeControl, nowHour, nowMinute);
+        }
+        closeCustomPopovers(root);
+        return;
+      }
+
+      var timeTrigger = target.closest('.crm-time-picker-trigger');
+      if (timeTrigger && root.contains(timeTrigger)) {
+        event.preventDefault();
+        toggleCustomPopover(root, timeTrigger.closest('.crm-time-picker'));
       }
     });
 
@@ -2106,7 +2261,7 @@
         customSelectField('Tipo', ICON.list, 'crm-fu-tipo', followupForm.tipo, activityTypeSelectItems()),
         '<div class="crm-followup-row" style="margin-bottom:10px">',
         customDateField('Data *', 'crm-fu-data', followupForm.data),
-        '<div class="crm-field" style="margin-bottom:0"><label class="crm-label">Hora *</label><div class="crm-input-wrap">' + ICON.clock + '<input class="crm-input crm-has-icon" type="time" id="crm-fu-hora" value="' + escapeHtml(followupForm.hora) + '" required /></div></div>',
+        customTimeField('Hora *', 'crm-fu-hora', followupForm.hora),
         '</div>',
         fieldIcon('Descrição', ICON.file, '<input class="crm-input crm-has-icon" type="text" id="crm-fu-desc" value="' + escapeHtml(followupForm.descricao) + '" placeholder="Opcional..." />'),
         '<button id="crm-followup-submit" class="crm-btn crm-btn-primary" type="button"' + (saving ? ' disabled' : '') + '>',

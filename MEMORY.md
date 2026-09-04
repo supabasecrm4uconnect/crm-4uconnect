@@ -5,8 +5,8 @@
 ## Estado atual
 
 - O `crm-web` de produção permanece inalterado por esta correção.
-- A versão local da extensão passa a ser 1.0.7; esta correção ainda não foi enviada ao GitHub nem à Chrome Web Store pelo Codex.
-- A branch local `fix/whatsapp-contact-save-v1.0.7` contém a correção da extensão e sua documentação; a criação de contato foi validada em campo.
+- A versão local da extensão passa a ser 1.0.8; esta correção ainda não foi enviada ao GitHub nem à Chrome Web Store pelo Codex.
+- A branch local `fix/whatsapp-contact-save-v1.0.8` contém a correção da extensão e sua documentação; a criação de contato foi validada em campo.
 
 ## Gotcha: salvamento de contatos no WhatsApp Web
 
@@ -51,6 +51,12 @@
   elevado enquanto estiver aberto, evitando que labels e inputs seguintes cubram
   o menu. O calendário também passa a replicar a estrutura do CRM Web com grades
   separadas para cabeçalho semanal e 42 dias, inclusive espaçamentos e tamanhos.
+- A versão 1.0.8 substitui também o seletor nativo de horário pelo mesmo padrão do
+  `CustomTimePicker`: colunas de hora/minuto, ação **Agora**, atalhos rápidos e
+  botão **Confirmar**.
+- Os itens de origem, segmento e tipo de atividade exibem ícones. Cada tipo de
+  atividade usa um ícone contextual; os status continuam identificados pelos
+  pontos coloridos adotados no CRM.
 
 ## Título sincronizado com o CRM Web
 
@@ -65,5 +71,5 @@
 ## Próximo passo
 
 - [ ] Recarregar a extensão local e a aba do WhatsApp; conferir listboxes,
-  calendário, date picker, abas e o fluxo completo de salvamento antes de
-  publicar a versão 1.0.7.
+  calendário, date picker, time picker, ícones, abas e o fluxo completo de
+  salvamento antes de publicar a versão 1.0.8.

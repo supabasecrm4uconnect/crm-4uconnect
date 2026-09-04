@@ -415,7 +415,8 @@
 }
 
 .crm-custom-select-trigger,
-.crm-date-picker-trigger {
+.crm-date-picker-trigger,
+.crm-time-picker-trigger {
   width: 100%;
   min-height: 36px;
   display: flex;
@@ -440,12 +441,14 @@
 }
 
 .crm-custom-select-trigger:hover,
-.crm-date-picker-trigger:hover {
+.crm-date-picker-trigger:hover,
+.crm-time-picker-trigger:hover {
   border-color: #cbd5e1;
 }
 
 .crm-popover-control.is-open > .crm-custom-select-trigger,
-.crm-popover-control.is-open > .crm-date-picker-trigger {
+.crm-popover-control.is-open > .crm-date-picker-trigger,
+.crm-popover-control.is-open > .crm-time-picker-trigger {
   border-color: #10b981;
   background: #ffffff;
   color: #0f172a;
@@ -458,6 +461,7 @@
 
 .crm-custom-select-trigger-content,
 .crm-date-picker-trigger-content,
+.crm-time-picker-trigger-content,
 .crm-custom-select-option-content {
   min-width: 0;
   display: flex;
@@ -466,7 +470,8 @@
 }
 
 .crm-custom-select-trigger-content > svg,
-.crm-date-picker-trigger-content > svg {
+.crm-date-picker-trigger-content > svg,
+.crm-time-picker-trigger-content > svg {
   width: 14px;
   height: 14px;
   color: #94a3b8;
@@ -475,6 +480,7 @@
 
 .crm-custom-select-display,
 .crm-date-picker-display,
+.crm-time-picker-display,
 .crm-custom-select-option-content > span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -502,7 +508,8 @@
 }
 
 .crm-custom-select-menu,
-.crm-date-picker-menu {
+.crm-date-picker-menu,
+.crm-time-picker-menu {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
@@ -517,14 +524,23 @@
 }
 
 .crm-custom-select-menu[hidden],
-.crm-date-picker-menu[hidden] {
+.crm-date-picker-menu[hidden],
+.crm-time-picker-menu[hidden] {
   display: none;
 }
 
 .crm-popover-up > .crm-custom-select-menu,
-.crm-popover-up > .crm-date-picker-menu {
+.crm-popover-up > .crm-date-picker-menu,
+.crm-popover-up > .crm-time-picker-menu {
   top: auto;
   bottom: calc(100% + 6px);
+}
+
+.crm-popover-align-right > .crm-custom-select-menu,
+.crm-popover-align-right > .crm-date-picker-menu,
+.crm-popover-align-right > .crm-time-picker-menu {
+  right: 0;
+  left: auto;
 }
 
 .crm-custom-select-menu {
@@ -584,6 +600,17 @@
 
 .crm-custom-select-option.is-selected .crm-custom-select-check {
   display: block;
+}
+
+.crm-custom-select-option-content > svg {
+  width: 14px;
+  height: 14px;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.crm-custom-select-option.is-selected .crm-custom-select-option-content > svg {
+  color: #ffffff;
 }
 
 .crm-date-picker-trigger {
@@ -805,6 +832,220 @@
 
 .crm-calendar-action.is-primary {
   color: #059669;
+}
+
+/* Time picker — réplica visual do CustomTimePicker do CRM Web */
+.crm-time-picker-trigger {
+  gap: 10px;
+  background: #ffffff;
+  color: #1e293b;
+}
+
+.crm-time-picker-trigger-content {
+  gap: 8px;
+}
+
+.crm-time-picker-display {
+  color: #94a3b8;
+  font-family: inherit;
+  font-weight: 600;
+}
+
+.crm-time-picker-display.has-value {
+  color: #0f172a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-weight: 700;
+}
+
+.crm-time-picker.crm-time-picker-has-value .crm-time-picker-trigger-content > svg {
+  color: #059669;
+}
+
+.crm-time-picker-menu {
+  width: 272px;
+  padding: 12px;
+}
+
+.crm-time-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.crm-time-heading,
+.crm-time-column-label,
+.crm-time-section-label {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.crm-time-current {
+  margin: 0;
+  color: #0f172a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 20px;
+}
+
+.crm-time-now {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 8px;
+  background: #ecfdf5;
+  color: #047857;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  transition: background 0.15s;
+}
+
+.crm-time-now:hover {
+  background: #d1fae5;
+}
+
+.crm-time-now svg {
+  width: 11px;
+  height: 11px;
+}
+
+.crm-time-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.crm-time-column-label,
+.crm-time-section-label {
+  margin: 0 0 4px;
+}
+
+.crm-time-column-label {
+  text-align: center;
+}
+
+.crm-time-scroll {
+  height: 112px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding: 4px 2px 4px 4px;
+  border: 1px solid #f1f5f9;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.50);
+}
+
+.crm-time-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.crm-time-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.crm-time-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #10b981;
+}
+
+.crm-time-option,
+.crm-time-preset {
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-weight: 700;
+  text-align: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.crm-time-option {
+  width: 100%;
+  flex-shrink: 0;
+  padding: 2px 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #334155;
+  font-size: 12px;
+}
+
+.crm-time-option:hover {
+  background: rgba(226, 232, 240, 0.70);
+}
+
+.crm-time-option.is-selected {
+  background: #059669;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.crm-time-presets {
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.crm-time-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.crm-time-preset {
+  padding: 2px 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 10px;
+}
+
+.crm-time-preset:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.crm-time-preset.is-selected {
+  border-color: #059669;
+  background: #059669;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.crm-time-confirm-wrap {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.crm-time-confirm {
+  width: 100%;
+  padding: 6px 0;
+  border: none;
+  border-radius: 12px;
+  background: #059669;
+  color: #ffffff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  transition: background 0.15s;
+}
+
+.crm-time-confirm:hover {
+  background: #047857;
 }
 
 .crm-followup-row > .crm-field {
