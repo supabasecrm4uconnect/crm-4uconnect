@@ -130,9 +130,9 @@ export default function Login() {
       {/* Card Centralizado com Cantos Elegantes */}
       <div className="w-full max-w-[430px] bg-white rounded-xl border border-slate-200 shadow-xl p-7 sm:p-8 flex flex-col justify-between transition-all duration-200">
         <div>
-          {/* Header com Tipografia Sora */}
+          {/* Header com a tipografia local do aplicativo */}
           <div className="text-left mb-6">
-            <h2 className="font-['Sora'] text-2xl font-extrabold tracking-tight text-slate-900 leading-none">
+            <h2 className="text-2xl font-extrabold tracking-tight text-slate-900 leading-none">
               Connect <span className="text-emerald-600">CRM</span>
             </h2>
             <p className="text-slate-500 text-xs mt-1.5">Gestão de leads integrada ao seu WhatsApp Web.</p>

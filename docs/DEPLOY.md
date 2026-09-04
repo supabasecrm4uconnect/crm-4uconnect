@@ -88,9 +88,13 @@ Ao alterar o domínio onde o CRM Web está hospedado, garanta a sincronização 
 2. Execute `npm run build`, `npm run lint` e valide a extensão antes do push.
 3. Envie somente a branch de Preview. A integração Git da Vercel gera um deployment temporário sem alterar os domínios de produção.
 4. Confirme as variáveis do ambiente **Preview** antes de testar gravações. Se `VITE_SUPABASE_URL` apontar para produção, qualquer cadastro, lead ou follow-up criado pelo Preview também será dado real de produção.
+   - A ausência de `VITE_SUPABASE_URL` ou `VITE_SUPABASE_ANON_KEY` impede a inicialização do cliente. O aplicativo detecta essa condição antes de carregar o Supabase e mostra quais nomes de variáveis precisam ser configurados; deployments antigos podem apresentar `supabaseUrl is required` no console.
+   - Prefira um projeto Supabase de homologação. Só reutilize as credenciais públicas de produção no Preview com autorização explícita e sabendo que as gravações atingirão os dados reais.
 5. O deployment de Preview não executa arquivos SQL de `database/migrations/` ou `database/operations/`.
 6. Mantenha o Preview protegido por autenticação da Vercel quando ele contiver telas ou dados administrativos.
 7. Só integre a branch na `main` após validar login, leads, pipeline, follow-ups, configurações e Clientes & Assinaturas.
+
+O script `https://vercel.live/.../feedback.js` pertence à barra de feedback do Preview. A CSP do CRM mantém scripts externos bloqueados intencionalmente; esse aviso não interfere no funcionamento do aplicativo.
 
 ### 6.2. Produção
 
