@@ -112,3 +112,10 @@ O script `https://vercel.live/.../feedback.js` pertence à barra de feedback do 
   ```
 - [ ] Variáveis de ambiente configuradas na Vercel.
 - [ ] Domínios da extensão atualizados e conferidos.
+
+### 6.3. Promoção web de 04/09/2026
+
+- O Preview foi validado com login e gravação de leads antes da promoção.
+- O commit de produção `e6905a9` contém exclusivamente arquivos de `crm-web/`; `crm-extension/` e `database/` não foram alterados.
+- A extensão publicada permaneceu em uso. O domínio legado `crm-4uconnect.vercel.app`, autorizado por essa versão, continua ativo e servindo o mesmo bundle do alias `connect-crm.vercel.app`.
+- O status da Vercel concluiu com sucesso e ambos os domínios responderam HTTP 200 após o deploy.
