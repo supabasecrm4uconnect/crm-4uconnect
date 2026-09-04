@@ -25,6 +25,9 @@
           refresh_token: data.refresh_token  || null,
           expires_at:    data.expires_at     || null,
           user_id:       (data.user && data.user.id) || null,
+          // O BrandingContext do CRM mantém document.title com o appTitle exato.
+          // Sincronizar esse valor evita duplicar a regra de título na extensão.
+          app_title:     (document.title || '').trim().slice(0, 160) || null,
         },
       });
     } catch (e) {

@@ -102,3 +102,34 @@ existentes. As abas seguem o padrão sublinhado usado no drawer de leads do CRM.
   do seletor nativo do navegador.
 - Mudanças futuras nesses componentes do CRM Web devem ser refletidas também em
   `crm-extension/content.js` e `crm-extension/sidebar.css`.
+- Como a animação de entrada dos campos usa `transform`, o campo que contém um
+  popover aberto recebe uma camada elevada própria; elevar somente o menu não é
+  suficiente para superar os contextos de empilhamento dos campos seguintes.
+
+## ADR-005 — Título da extensão sincronizado pelo CRM Web
+
+- **Data:** 04/09/2026
+- **Status:** Aceita
+
+### Contexto
+
+O CRM Web monta o título a partir do nome do produto e da organização associada
+ao perfil logado. A extensão repetia parcialmente essa regra e buscava
+`organizations?limit=1`; para superadministradores, que podem visualizar mais de
+uma organização, a consulta podia selecionar outra empresa e mostrar um título
+diferente do CRM.
+
+### Decisão
+
+O `session-bridge.js` passa a sincronizar também o `document.title` mantido pelo
+`BrandingContext` do CRM Web. A extensão usa esse `app_title` como fonte
+principal. Como fallback, resolve primeiro o `organization_id` do perfil logado
+e busca somente essa organização, reproduzindo o fluxo do CRM.
+
+### Consequências
+
+- O cabeçalho da extensão acompanha exatamente o título exibido pelo CRM Web,
+  inclusive mudanças de branding sem renovação do token.
+- Superadministradores não recebem mais o nome de uma organização arbitrária.
+- Sessões antigas sem `app_title` continuam funcionando por meio da consulta de
+  fallback vinculada ao perfil.

@@ -5,8 +5,8 @@
 ## Estado atual
 
 - O `crm-web` de produção permanece inalterado por esta correção.
-- A versão local da extensão passa a ser 1.0.6; esta correção ainda não foi enviada ao GitHub nem à Chrome Web Store pelo Codex.
-- A branch local `fix/whatsapp-contact-save-v1.0.6` contém a correção da extensão e sua documentação; a criação de contato foi validada em campo.
+- A versão local da extensão passa a ser 1.0.7; esta correção ainda não foi enviada ao GitHub nem à Chrome Web Store pelo Codex.
+- A branch local `fix/whatsapp-contact-save-v1.0.7` contém a correção da extensão e sua documentação; a criação de contato foi validada em campo.
 
 ## Gotcha: salvamento de contatos no WhatsApp Web
 
@@ -47,9 +47,23 @@
   assim, validação, estado e payloads de salvamento não mudaram.
 - Gotcha: o popup de `select` e `input type="date"` nativos não pode ser
   uniformizado integralmente por CSS entre navegador e sistema operacional.
+- A versão 1.0.7 corrige o empilhamento: o campo inteiro do listbox/date picker é
+  elevado enquanto estiver aberto, evitando que labels e inputs seguintes cubram
+  o menu. O calendário também passa a replicar a estrutura do CRM Web com grades
+  separadas para cabeçalho semanal e 42 dias, inclusive espaçamentos e tamanhos.
+
+## Título sincronizado com o CRM Web
+
+- A extensão 1.0.7 recebe do `session-bridge.js` o `document.title` definido pelo
+  `BrandingContext` e o usa diretamente em seu cabeçalho.
+- A divergência observada (`Connect CRM — Leoclecio` no CRM e outra empresa na
+  extensão) ocorria porque `organizations?limit=1` pode retornar qualquer cliente
+  para um superadministrador.
+- O fallback agora consulta o `organization_id` do perfil autenticado antes de
+  buscar `nome_exibicao`/`nome`, seguindo o mesmo fluxo do CRM Web.
 
 ## Próximo passo
 
 - [ ] Recarregar a extensão local e a aba do WhatsApp; conferir listboxes,
-  calendário, abas e o fluxo completo de salvamento antes de publicar a versão
-  1.0.6.
+  calendário, date picker, abas e o fluxo completo de salvamento antes de
+  publicar a versão 1.0.7.

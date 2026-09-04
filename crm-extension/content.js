@@ -88,6 +88,8 @@
     stopLeadPolling();
     clearSession();
     state.auth = null;
+    state.orgName = '';
+    applyBranding();
     state.current = { phone: null, name: null, lead: null };
     state.sources = [];
     state.segments = [];
@@ -180,10 +182,29 @@
       .then(function (d) { return Array.isArray(d) ? d : []; });
   }
 
-  function getOrg(token) {
-    // A RLS "Ver própria org" retorna apenas a organização do usuário logado
-    return apiRequest('GET', '/rest/v1/organizations?select=nome,nome_exibicao&limit=1', null, token)
-      .then(function (d) { return Array.isArray(d) && d.length ? d[0] : null; });
+  function getOrg(userId, token) {
+    // Replica o BrandingContext do CRM Web: primeiro resolve a organização do
+    // perfil logado e só então busca o nome. `organizations?limit=1` não é
+    // seguro para super admins, pois a RLS pode permitir mais de uma empresa.
+    if (!userId) return Promise.resolve(null);
+    return apiRequest(
+      'GET',
+      '/rest/v1/profiles?id=eq.' + encodeURIComponent(userId) + '&select=organization_id&limit=1',
+      null,
+      token
+    ).then(function (profiles) {
+      var profile = Array.isArray(profiles) && profiles.length ? profiles[0] : null;
+      var organizationId = profile && profile.organization_id;
+      if (!organizationId) return null;
+      return apiRequest(
+        'GET',
+        '/rest/v1/organizations?id=eq.' + encodeURIComponent(organizationId) + '&select=nome,nome_exibicao&limit=1',
+        null,
+        token
+      ).then(function (organizations) {
+        return Array.isArray(organizations) && organizations.length ? organizations[0] : null;
+      });
+    });
   }
 
   function loadLeadsCache(token) {
@@ -434,7 +455,7 @@
 
   function customDateLabel(value) {
     var date = parseLocalDate(value);
-    if (!date) return 'Selecionar data...';
+    if (!date) return 'Selecione a data';
     if (localDateValue(date) === todayLocalStr()) return 'Hoje';
     return String(date.getDate()).padStart(2, '0') + '/' + String(date.getMonth() + 1).padStart(2, '0') + '/' + date.getFullYear();
   }
@@ -444,11 +465,10 @@
     var firstDay = new Date(viewYear, viewMonth, 1).getDay();
     var daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
     var daysInPreviousMonth = new Date(viewYear, viewMonth, 0).getDate();
+    var weekdays = CALENDAR_WEEKDAYS.map(function (weekday) {
+      return '<span class="crm-calendar-weekday">' + weekday + '</span>';
+    }).join('');
     var days = [];
-
-    CALENDAR_WEEKDAYS.forEach(function (weekday) {
-      days.push('<div class="crm-calendar-weekday">' + weekday + '</div>');
-    });
 
     for (var index = 0; index < 42; index += 1) {
       var dayNumber;
@@ -473,18 +493,21 @@
       var isToday = dateValue === todayValue;
       var classes = 'crm-calendar-day' + (!inCurrentMonth ? ' is-outside' : '') + (isToday ? ' is-today' : '') + (isSelected ? ' is-selected' : '');
 
-      days.push('<button type="button" class="' + classes + '" data-calendar-date="' + dateValue + '" aria-label="' + String(cellDate.getDate()).padStart(2, '0') + '/' + String(cellDate.getMonth() + 1).padStart(2, '0') + '/' + cellDate.getFullYear() + '"' + (isSelected ? ' aria-current="date"' : '') + '>' +
-        '<span>' + dayNumber + '</span>' + (isToday && !isSelected ? '<span class="crm-calendar-today-dot"></span>' : '') + '</button>');
+      days.push('<div class="crm-calendar-day-cell"><button type="button" class="' + classes + '" data-calendar-date="' + dateValue + '" aria-label="' + String(cellDate.getDate()).padStart(2, '0') + '/' + String(cellDate.getMonth() + 1).padStart(2, '0') + '/' + cellDate.getFullYear() + '"' + (isSelected ? ' aria-current="date"' : '') + '>' +
+        '<span>' + dayNumber + '</span>' + (isToday && !isSelected ? '<span class="crm-calendar-today-dot"></span>' : '') + '</button></div>');
     }
 
-    return '<div class="crm-calendar-header">' +
-        '<div class="crm-calendar-month">' + CALENDAR_MONTHS[viewMonth] + ' <span>' + viewYear + '</span></div>' +
-        '<div class="crm-calendar-navigation">' +
-          '<button type="button" class="crm-calendar-nav" data-calendar-nav="-1" aria-label="Mês anterior">' + svgIcon('<path d="m15 18-6-6 6-6"/>') + '</button>' +
-          '<button type="button" class="crm-calendar-nav" data-calendar-nav="1" aria-label="Próximo mês">' + svgIcon('<path d="m9 18 6-6-6-6"/>') + '</button>' +
+    return '<div class="crm-calendar">' +
+        '<div class="crm-calendar-header">' +
+          '<div class="crm-calendar-month">' + CALENDAR_MONTHS[viewMonth] + ' <span>' + viewYear + '</span></div>' +
+          '<div class="crm-calendar-navigation">' +
+            '<button type="button" class="crm-calendar-nav" data-calendar-nav="-1" aria-label="Mês anterior">' + svgIcon('<path d="m15 18-6-6 6-6"/>') + '</button>' +
+            '<button type="button" class="crm-calendar-nav" data-calendar-nav="1" aria-label="Próximo mês">' + svgIcon('<path d="m9 18 6-6-6-6"/>') + '</button>' +
+          '</div>' +
         '</div>' +
+        '<div class="crm-calendar-weekdays">' + weekdays + '</div>' +
+        '<div class="crm-calendar-days">' + days.join('') + '</div>' +
       '</div>' +
-      '<div class="crm-calendar-grid">' + days.join('') + '</div>' +
       '<div class="crm-calendar-footer">' +
         '<button type="button" class="crm-calendar-action" data-calendar-action="clear">Limpar</button>' +
         '<button type="button" class="crm-calendar-action is-primary" data-calendar-action="today">Hoje</button>' +
@@ -512,6 +535,8 @@
     root.querySelectorAll('.crm-popover-control.is-open').forEach(function (control) {
       if (control === except) return;
       control.classList.remove('is-open', 'crm-popover-up');
+      var field = control.closest('.crm-field');
+      if (field) field.classList.remove('crm-field-popover-open');
       var menu = control.querySelector('.crm-custom-select-menu, .crm-date-picker-menu');
       var trigger = control.querySelector('.crm-custom-select-trigger, .crm-date-picker-trigger');
       if (menu) menu.hidden = true;
@@ -538,6 +563,8 @@
     }
 
     control.classList.toggle('is-open', shouldOpen);
+    var field = control.closest('.crm-field');
+    if (field) field.classList.toggle('crm-field-popover-open', shouldOpen);
     menu.hidden = !shouldOpen;
     trigger.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
   }
@@ -925,6 +952,7 @@
     sources: [],
     segments: [],
     statuses: [],
+    orgName: '',
     pendingFollowups: 0,
     avisosList: [],  // lista detalhada de atividades pendentes para a aba Avisos Gerais
     current: { phone: null, name: null, lead: null, photo: null },
@@ -2077,8 +2105,8 @@
         '<form id="crm-followup-form">',
         customSelectField('Tipo', ICON.list, 'crm-fu-tipo', followupForm.tipo, activityTypeSelectItems()),
         '<div class="crm-followup-row" style="margin-bottom:10px">',
-        customDateField('Data', 'crm-fu-data', followupForm.data),
-        '<div class="crm-field" style="margin-bottom:0"><label class="crm-label">Hora</label><div class="crm-input-wrap">' + ICON.clock + '<input class="crm-input crm-has-icon" type="time" id="crm-fu-hora" value="' + escapeHtml(followupForm.hora) + '" required /></div></div>',
+        customDateField('Data *', 'crm-fu-data', followupForm.data),
+        '<div class="crm-field" style="margin-bottom:0"><label class="crm-label">Hora *</label><div class="crm-input-wrap">' + ICON.clock + '<input class="crm-input crm-has-icon" type="time" id="crm-fu-hora" value="' + escapeHtml(followupForm.hora) + '" required /></div></div>',
         '</div>',
         fieldIcon('Descrição', ICON.file, '<input class="crm-input crm-has-icon" type="text" id="crm-fu-desc" value="' + escapeHtml(followupForm.descricao) + '" placeholder="Opcional..." />'),
         '<button id="crm-followup-submit" class="crm-btn crm-btn-primary" type="button"' + (saving ? ' disabled' : '') + '>',
@@ -2572,6 +2600,13 @@
   function applyBranding() {
     var el = document.querySelector('.crm-logo-text');
     if (!el) return;
+    var syncedTitle = state.auth && typeof state.auth.app_title === 'string'
+      ? state.auth.app_title.trim()
+      : '';
+    if (syncedTitle) {
+      el.textContent = syncedTitle;
+      return;
+    }
     var company = (state.orgName || '').trim();
     el.textContent = company ? 'Connect CRM — ' + company : 'Connect CRM';
   }
@@ -2583,13 +2618,13 @@
       getSegments(state.auth.access_token),
       getStatuses(state.auth.access_token),
       loadLeadsCache(state.auth.access_token),
-      getOrg(state.auth.access_token),
+      getOrg(state.auth.user_id, state.auth.access_token),
     ]).then(function (results) {
       state.sources = Array.isArray(results[0]) ? results[0] : [];
       state.segments = Array.isArray(results[1]) ? results[1] : [];
       state.statuses = Array.isArray(results[2]) ? results[2] : [];
       var org = results[4];
-      if (org) state.orgName = (org.nome_exibicao && org.nome_exibicao.trim()) || org.nome || '';
+      state.orgName = org ? ((org.nome_exibicao && org.nome_exibicao.trim()) || org.nome || '') : '';
       applyBranding();
       console.log('[Connect CRM] Meta carregada: ' + state.sources.length + ' origens, ' + state.segments.length + ' segmentos, ' + state.statuses.length + ' statuses.');
       if (typeof crmLogger !== 'undefined') crmLogger.info('meta_carregada', 'Metadados carregados com sucesso', {
@@ -2807,13 +2842,14 @@
         getSources(state.auth.access_token),
         getSegments(state.auth.access_token),
         getStatuses(state.auth.access_token),
-        getOrg(state.auth.access_token),
+        getOrg(state.auth.user_id, state.auth.access_token),
       ]).then(function (results) {
         state.sources = Array.isArray(results[0]) ? results[0] : state.sources;
         state.segments = Array.isArray(results[1]) ? results[1] : state.segments;
         state.statuses = Array.isArray(results[2]) ? results[2] : state.statuses;
         var org = results[3];
-        if (org) { state.orgName = (org.nome_exibicao && org.nome_exibicao.trim()) || org.nome || ''; applyBranding(); }
+        state.orgName = org ? ((org.nome_exibicao && org.nome_exibicao.trim()) || org.nome || '') : '';
+        applyBranding();
       }).catch(function () { });
     }, 30000);
   }
@@ -2821,6 +2857,7 @@
   // Inicializa a extensão com uma sessão válida (reutilizado pelo boot inicial e pelo bridge)
   function bootAuthenticated(session) {
     state.auth = session;
+    applyBranding();
     state.ui.view = 'loading';
     render();
 
@@ -2866,14 +2903,19 @@
         console.log('[Connect CRM] Sessão recebida do CRM — iniciando automaticamente.');
         if (typeof crmLogger !== 'undefined') crmLogger.info('sessao_recebida', 'Sessão recebida do CRM web — extensão autenticada automaticamente', { modulo: 'content.js' });
         bootAuthenticated(newSession);
-      } else if (newSession && newSession.access_token && state.auth &&
-        newSession.access_token !== state.auth.access_token) {
-        // CRM renovou o token (~1h) — atualiza no lugar, sem re-bootar, para que
-        // as próximas chamadas usem o token fresco em vez do antigo (que expira
-        // e derrubaria o usuário pro login mesmo com o CRM aberto e válido).
-        console.log('[Connect CRM] Token atualizado pelo CRM.');
-        if (typeof crmLogger !== 'undefined') crmLogger.info('token_atualizado', 'Token de acesso renovado pelo CRM web — sessão continuada', { modulo: 'content.js' });
-        state.auth = newSession;
+      } else if (newSession && newSession.access_token && state.auth) {
+        var tokenChanged = newSession.access_token !== state.auth.access_token;
+        var titleChanged = (newSession.app_title || '') !== (state.auth.app_title || '');
+        if (tokenChanged || titleChanged) {
+          // O bridge também transporta o appTitle do CRM. Assim, uma alteração
+          // de branding atualiza o cabeçalho mesmo sem trocar o token.
+          state.auth = newSession;
+          if (titleChanged) applyBranding();
+          if (tokenChanged) {
+            console.log('[Connect CRM] Token atualizado pelo CRM.');
+            if (typeof crmLogger !== 'undefined') crmLogger.info('token_atualizado', 'Token de acesso renovado pelo CRM web — sessão continuada', { modulo: 'content.js' });
+          }
+        }
       } else if (!newSession && state.auth) {
         // Usuário fez logout no CRM — espelha aqui
         console.log('[Connect CRM] Logout detectado no CRM.');
