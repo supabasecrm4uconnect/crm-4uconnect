@@ -14,6 +14,8 @@ Rodar uma vez, em ordem (todas idempotentes):
 5. `migration_5_security.sql` — escopa o bucket `org-logos` por organização.
 6. `migration_11_remove_auto_arquivar.sql` — remove a função `arquivar_leads_inativos()` e a coluna `auto_arquivar_dias` (arquivamento automático removido do produto).
 
+7. `migration_12_status_history_audit.sql` — registra automaticamente mudanças futuras de status para o relatório de fechamentos; não altera, remove ou preenche dados existentes.
+
 ## Variáveis de ambiente (Vercel → Project Settings → Environment Variables)
 | Var | Onde | Obrigatória | Uso |
 |-----|------|-------------|-----|

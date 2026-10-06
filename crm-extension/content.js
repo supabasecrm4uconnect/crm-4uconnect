@@ -161,10 +161,6 @@
       .then(function (data) { return Array.isArray(data) ? data[0] : data; });
   }
 
-  function insertStatusHistory(body, token) {
-    return apiRequest('POST', '/rest/v1/lead_status_history', body, token);
-  }
-
   function createActivity(body, token) {
     return apiRequest('POST', '/rest/v1/lead_activities', body, token);
   }
@@ -2699,12 +2695,7 @@
           return;
         }
 
-        return insertStatusHistory({
-          lead_id: newLead.id,
-          status_anterior: null,
-          status_novo: status,
-          alterado_por: state.auth.user_id || null,
-        }, token).then(function () {
+        // O banco registra o evento de status junto da criação do lead.
           state.current.lead = newLead;
           state.ui.view = 'existing-lead';
           if (typeof crmLogger !== 'undefined') crmLogger.info('lead_criado', 'Novo lead criado com sucesso no CRM', {
@@ -2727,7 +2718,6 @@
             render();
             setTimeout(function () { state.ui.success = ''; render(); }, 3000);
           });
-        });
       });
     }).catch(function (err) {
       console.error('[Connect CRM] Erro ao salvar lead:', err);
@@ -2752,8 +2742,7 @@
     var origem_id = state.form.origem_id;
     var segmento_id = state.form.segmento_id;
     var observacao = state.form.observacao;
-    var prevStatus = state.current.lead.status;
-    var statusChanged = status !== prevStatus;
+    var statusChanged = status !== state.current.lead.status;
     var nomeChanged = (nome || '').trim() !== (state.current.lead.nome || '').trim();
     var token = state.auth.access_token;
     var leadId = state.current.lead.id;
@@ -2778,11 +2767,6 @@
       tags: state.form.tags || [],
       foto_url: state.current.photo || state.current.lead.foto_url || null,
     }, token).then(function (updated) {
-      var afterHistory = statusChanged
-        ? insertStatusHistory({ lead_id: leadId, status_anterior: prevStatus, status_novo: status, alterado_por: state.auth.user_id || null }, token)
-        : Promise.resolve();
-
-      return afterHistory.then(function () {
         state.current.lead = Object.assign({}, state.current.lead, updated);
         if (typeof crmLogger !== 'undefined') crmLogger.info('lead_atualizado', 'Lead atualizado com sucesso no CRM', {
           modulo: 'content.js',
@@ -2797,11 +2781,11 @@
         injectListBadges();
 
         // Sincroniza nome no WhatsApp Web apenas quando o nome mudou
-        if (nomeChanged && document.querySelector('#main')) {
-          return syncContactNameToWA(updated.nome || nome);
-        }
-        return true;
-      }).then(function (whatsAppSynced) {
+        var syncWhatsApp = nomeChanged && document.querySelector('#main')
+          ? syncContactNameToWA(updated.nome || nome)
+          : Promise.resolve(true);
+
+        return syncWhatsApp.then(function (whatsAppSynced) {
         state.ui.saving = false;
         state.ui.leadSaveOverlay = false;
         state.ui.error = nomeChanged && whatsAppSynced === false

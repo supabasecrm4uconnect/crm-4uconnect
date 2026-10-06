@@ -28,6 +28,7 @@ import { InputIcon, TextareaIcon, iconInputCls, iconTextareaCls } from '../compo
 import type { LeadWithRelations, LeadSource, LeadSegment, LeadStatus } from '../types'
 
 type ViewMode = 'list' | 'pipeline'
+type ClosedStatusHistoryRow = { lead_id: string; created_at: string }
 
 const labelCls = 'block text-sm font-medium text-slate-700 mb-1.5'
 
@@ -116,6 +117,10 @@ export default function Leads() {
   const [filterDataDe, setFilterDataDe] = useState<string>('')
   const [filterDataAte, setFilterDataAte] = useState<string>('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [closedAtByLead, setClosedAtByLead] = useState<Record<string, string>>({})
+  const [loadingClosedHistory, setLoadingClosedHistory] = useState(false)
+  const [closedHistoryError, setClosedHistoryError] = useState(false)
+  const isClosedReport = filterStatus === 'fechado'
 
   // Modal novo lead
   const [showModal, setShowModal] = useState(false)
@@ -140,6 +145,57 @@ export default function Leads() {
   useLeadsRealtime(setLeads)
 
   useEffect(() => { loadAll() }, [])
+
+  // A data de fechamento vem do histórico auditável, nunca de updated_at.
+  useEffect(() => {
+    if (!isClosedReport) {
+      setClosedAtByLead({})
+      setLoadingClosedHistory(false)
+      setClosedHistoryError(false)
+      return
+    }
+
+    let cancelled = false
+
+    async function loadClosedHistory() {
+      setLoadingClosedHistory(true)
+      setClosedHistoryError(false)
+
+      const { data, error } = await supabase
+        .from('lead_status_history')
+        .select('lead_id, created_at')
+        .eq('status_novo', 'fechado')
+        .order('created_at', { ascending: false })
+
+      if (cancelled) return
+
+      if (error) {
+        setClosedAtByLead({})
+        setClosedHistoryError(true)
+      } else {
+        const latestByLead: Record<string, string> = {}
+        ;((data as ClosedStatusHistoryRow[]) ?? []).forEach(entry => {
+          if (!latestByLead[entry.lead_id]) latestByLead[entry.lead_id] = entry.created_at
+        })
+        setClosedAtByLead(latestByLead)
+      }
+      setLoadingClosedHistory(false)
+    }
+
+    void loadClosedHistory()
+
+    const channel = supabase
+      .channel('leads-closed-report-history')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lead_status_history' }, () => {
+        void loadClosedHistory()
+      })
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      supabase.removeChannel(channel)
+    }
+  }, [isClosedReport])
 
   async function loadAll() {
     setLoading(true)
@@ -197,12 +253,34 @@ export default function Leads() {
       if (filterStatus && l.status !== filterStatus) return false
       if (filterOrigem && l.origem_id !== filterOrigem) return false
       if (filterSegmento && l.segmento_id !== filterSegmento) return false
-      if (filterDataDe && l.created_at.slice(0, 10) < filterDataDe) return false
-      if (filterDataAte && l.created_at.slice(0, 10) > filterDataAte) return false
+      if (isClosedReport) {
+        const closedAt = closedAtByLead[l.id]
+        if (!closedAt) return false
+        const closedDate = new Date(closedAt).toLocaleDateString('sv-SE')
+        if (filterDataDe && closedDate < filterDataDe) return false
+        if (filterDataAte && closedDate > filterDataAte) return false
+      } else {
+        if (filterDataDe && l.created_at.slice(0, 10) < filterDataDe) return false
+        if (filterDataAte && l.created_at.slice(0, 10) > filterDataAte) return false
+      }
       if (filterTags.length && !filterTags.some(t => l.tags?.includes(t))) return false
       return true
     })
-  }, [leads, search, filterStatus, filterOrigem, filterSegmento, filterDataDe, filterDataAte, filterTags])
+  }, [leads, search, filterStatus, filterOrigem, filterSegmento, filterDataDe, filterDataAte, filterTags, isClosedReport, closedAtByLead])
+
+  const closedSummary = useMemo(() => filtered.reduce(
+    (summary, lead) => {
+      summary.valorTotal += lead.valor ?? 0
+      if (lead.valor == null) summary.semValor += 1
+      return summary
+    },
+    { valorTotal: 0, semValor: 0 }
+  ), [filtered])
+
+  const closedWithoutVerifiedDate = useMemo(() => {
+    if (!isClosedReport) return 0
+    return leads.filter(lead => !lead.arquivado && lead.status === 'fechado' && !closedAtByLead[lead.id]).length
+  }, [leads, isClosedReport, closedAtByLead])
 
   function addTag(val: string) {
     const t = val.trim()
@@ -452,7 +530,7 @@ export default function Leads() {
                   setFilterDataDe(start)
                   setFilterDataAte(end)
                 }}
-                label="Criado em"
+                label={isClosedReport ? 'Fechado em' : 'Criado em'}
               />
 
               {/* Filtro de Tags */}
@@ -504,6 +582,35 @@ export default function Leads() {
           )}
         </div>
 
+        {viewMode === 'list' && isClosedReport && !loadingClosedHistory && !closedHistoryError && (
+          <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 shadow-2xs animate-fade-in">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Contratos fechados no filtro</p>
+              <p className="text-lg font-black text-emerald-900 tabular-nums">{filtered.length}</p>
+            </div>
+            <div className="border-l border-emerald-200 pl-6">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Valor total</p>
+              <p className="text-lg font-black text-emerald-900 tabular-nums">{formatCurrency(closedSummary.valorTotal)}</p>
+            </div>
+            <p className="text-xs font-semibold text-emerald-800">
+              {closedSummary.semValor === 0
+                ? 'Todos os contratos possuem valor informado.'
+                : `${closedSummary.semValor} ${closedSummary.semValor === 1 ? 'contrato sem valor informado.' : 'contratos sem valor informado.'}`}
+            </p>
+            {closedWithoutVerifiedDate > 0 && (
+              <p className="basis-full text-[11px] font-medium text-amber-800">
+                {closedWithoutVerifiedDate} {closedWithoutVerifiedDate === 1 ? 'contrato fechado sem data comprovada foi excluído' : 'contratos fechados sem data comprovada foram excluídos'} do relatório.
+              </p>
+            )}
+          </div>
+        )}
+
+        {viewMode === 'list' && isClosedReport && !loadingClosedHistory && closedHistoryError && (
+          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">
+            Não foi possível carregar as datas comprovadas de fechamento. O relatório não exibiu resultados para evitar informações imprecisas.
+          </div>
+        )}
+
         {/* Pipeline view */}
         {viewMode === 'pipeline' && (
           (loading || loadingStatuses) ? (
@@ -522,7 +629,7 @@ export default function Leads() {
         {/* Lista view com Grid Estilo Excel / Spreadsheet */}
         {viewMode === 'list' && (
           <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
-            {loading ? (
+            {(loading || loadingClosedHistory) ? (
               <LeadTableSkeleton rows={8} />
             ) : filtered.length === 0 ? (
               <div className="py-20 text-center">
@@ -548,7 +655,7 @@ export default function Leads() {
                       <th className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-4 py-3 border-r border-slate-200/90 select-none bg-slate-100">Segmento</th>
                       <th className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-4 py-3 border-r border-slate-200/90 select-none bg-slate-100">Valor</th>
                       <th className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-4 py-3 border-r border-slate-200/90 select-none bg-slate-100">Responsável</th>
-                      <th className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-4 py-3 border-r border-slate-200/90 select-none bg-slate-100">Criado em</th>
+                      <th className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-4 py-3 border-r border-slate-200/90 select-none bg-slate-100">{isClosedReport ? 'Fechado em' : 'Criado em'}</th>
                       <th className="text-[11px] font-bold uppercase tracking-wider text-slate-600 px-4 py-3 border-r border-slate-200/90 select-none bg-slate-100">Próx. Follow-up</th>
                       <th className="px-3 py-3 w-10 text-center bg-slate-100" />
                     </tr>
@@ -628,7 +735,7 @@ export default function Leads() {
                           ) : '—'}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap border-r border-slate-200/80 text-[11px] text-slate-500 font-mono">
-                          {formatDateTime(lead.created_at)}
+                          {isClosedReport ? formatDateTime(closedAtByLead[lead.id]) : formatDateTime(lead.created_at)}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap border-r border-slate-200/80">
                           {lead.proximo_followup ? (
